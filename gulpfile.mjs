@@ -319,6 +319,7 @@ function createWebpackConfig(
         defines: bundleDefines,
       },
     ],
+    "@babel/plugin-syntax-import-attributes"
   ];
 
   const plugins = [];
@@ -374,6 +375,7 @@ function createWebpackConfig(
     module: {
       rules: [
         {
+          test: /\.[mc]js$/,
           loader: "babel-loader",
           exclude: babelExcludeRegExp,
           options: {
@@ -1545,7 +1547,10 @@ function buildLibHelper(bundleDefines, inputStream, outputDir) {
               { ...BABEL_PRESET_ENV_OPTS, loose: false, modules: false },
             ],
           ],
-      plugins: [[babelPluginPDFJSPreprocessor, ctx]],
+      plugins: [
+        [babelPluginPDFJSPreprocessor, ctx],
+        "@babel/plugin-syntax-import-attributes"
+      ],
       targets: BABEL_TARGETS,
     }).code;
     content = content.replaceAll(
