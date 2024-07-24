@@ -369,12 +369,31 @@ function getOriginalIndex(diffs, pos, len) {
 }
 
 /**
+ * @callback PDFFindMatcher
+ * @this {PDFFindController}
+ * @param {string | string[]} query - The search query.
+ * @param {string} pageContent - The text content of the page to search in.
+ * @param {number} pageIndex - The index of the page that is being processed.
+ * @returns {Promise<SingleFindMatch[]> | SingleFindMatch[] | undefined} An
+ *    array of matches in the provided page.
+ */
+
+/**
+ * @typedef {Object} SingleFindMatch
+ * @property {number} index - The start of the matched text in the page's string
+ *   contents.
+ * @property {number} length - The length of the matched text.
+ */
+
+/**
  * @typedef {Object} PDFFindControllerOptions
  * @property {IPDFLinkService} linkService - The navigation/linking service.
  * @property {EventBus} eventBus - The application event bus.
  * @property {boolean} [updateMatchesCountOnProgress] - True if the matches
  *   count must be updated on progress or only when the last page is reached.
  *   The default value is `true`.
+ * @property {PDFFindMatcher} [matcher] - The function that will be used to
+ *                                        run the search queries.
  */
 
 /**
@@ -387,13 +406,22 @@ class PDFFindController {
 
   #visitedPagesCount = 0;
 
+  /** @type {PDFFindMatcher} */
+  #matcher = null;
+
   /**
    * @param {PDFFindControllerOptions} options
    */
-  constructor({ linkService, eventBus, updateMatchesCountOnProgress = true }) {
+  constructor({
+    linkService,
+    eventBus,
+    updateMatchesCountOnProgress = true,
+    matcher = this.#defaultFindMatcher,
+  }) {
     this._linkService = linkService;
     this._eventBus = eventBus;
     this.#updateMatchesCountOnProgress = updateMatchesCountOnProgress;
+    this.#matcher = matcher;
 
     /**
      * Callback used to check if a `pageNumber` is currently visible.
@@ -670,37 +698,6 @@ class PDFFindController {
     return true;
   }
 
-  #calculateRegExpMatch(query, entireWord, pageIndex, pageContent) {
-    const matches = (this._pageMatches[pageIndex] = []);
-    const matchesLength = (this._pageMatchesLength[pageIndex] = []);
-    if (!query) {
-      // The query can be empty because some chars like diacritics could have
-      // been stripped out.
-      return;
-    }
-    const diffs = this._pageDiffs[pageIndex];
-    let match;
-    while ((match = query.exec(pageContent)) !== null) {
-      if (
-        entireWord &&
-        !this.#isEntireWord(pageContent, match.index, match[0].length)
-      ) {
-        continue;
-      }
-
-      const [matchPos, matchLen] = getOriginalIndex(
-        diffs,
-        match.index,
-        match[0].length
-      );
-
-      if (matchLen) {
-        matches.push(matchPos);
-        matchesLength.push(matchLen);
-      }
-    }
-  }
-
   #convertToRegExpString(query, hasDiacritics) {
     const { matchDiacritics } = this.#state;
     let isUnicode = false;
@@ -771,39 +768,30 @@ class PDFFindController {
     return [isUnicode, query];
   }
 
-  #calculateMatch(pageIndex) {
-    let query = this.#query;
+  async #calculateMatch(pageIndex) {
+    const query = this.#query;
     if (query.length === 0) {
       return; // Do nothing: the matches should be wiped out already.
     }
-    const { caseSensitive, entireWord } = this.#state;
-    const pageContent = this._pageContents[pageIndex];
-    const hasDiacritics = this._hasDiacritics[pageIndex];
 
-    let isUnicode = false;
-    if (typeof query === "string") {
-      [isUnicode, query] = this.#convertToRegExpString(query, hasDiacritics);
-    } else {
-      // Words are sorted in reverse order to be sure that "foobar" is matched
-      // before "foo" in case the query is "foobar foo".
-      query = query
-        .sort()
-        .reverse()
-        .map(q => {
-          const [isUnicodePart, queryPart] = this.#convertToRegExpString(
-            q,
-            hasDiacritics
-          );
-          isUnicode ||= isUnicodePart;
-          return `(${queryPart})`;
-        })
-        .join("|");
-    }
+    const matcherResult = await this.#matcher(
+      query,
+      this._pageContents[pageIndex],
+      pageIndex
+    );
 
-    const flags = `g${isUnicode ? "u" : ""}${caseSensitive ? "" : "i"}`;
-    query = query ? new RegExp(query, flags) : null;
+    const matches = (this._pageMatches[pageIndex] = []);
+    const matchesLength = (this._pageMatchesLength[pageIndex] = []);
+    const diffs = this._pageDiffs[pageIndex];
 
-    this.#calculateRegExpMatch(query, entireWord, pageIndex, pageContent);
+    matcherResult?.forEach(({ index, length }) => {
+      const [matchPos, matchLen] = getOriginalIndex(diffs, index, length);
+
+      if (matchLen) {
+        matches.push(matchPos);
+        matchesLength.push(matchLen);
+      }
+    });
 
     // When `highlightAll` is set, ensure that the matches on previously
     // rendered (and still active) pages are correctly highlighted.
@@ -827,6 +815,49 @@ class PDFFindController {
       // the Java side provides only one object to update the counts.
       this.#updateUIResultsCount();
     }
+  }
+
+  #defaultFindMatcher(query, pageContent, pageIndex) {
+    const hasDiacritics = this._hasDiacritics[pageIndex];
+
+    let isUnicode = false;
+    if (typeof query === "string") {
+      [isUnicode, query] = this.#convertToRegExpString(query, hasDiacritics);
+    } else {
+      // Words are sorted in reverse order to be sure that "foobar" is matched
+      // before "foo" in case the query is "foobar foo".
+      query = query
+        .sort()
+        .reverse()
+        .map(q => {
+          const [isUnicodePart, queryPart] = this.#convertToRegExpString(
+            q,
+            hasDiacritics
+          );
+          isUnicode ||= isUnicodePart;
+          return `(${queryPart})`;
+        })
+        .join("|");
+    }
+    if (!query) {
+      return;
+    }
+
+    const { caseSensitive, entireWord } = this.#state;
+    const flags = `g${isUnicode ? "u" : ""}${caseSensitive ? "" : "i"}`;
+    query = new RegExp(query, flags);
+
+    const matches = [];
+    for (const { index, 0: text } of pageContent.matchAll(query)) {
+      const { length } = text;
+      if (entireWord && !this.#isEntireWord(pageContent, index, length)) {
+        continue;
+      }
+
+      matches.push({ index, length });
+    }
+
+    return matches;
   }
 
   #extractText() {
@@ -930,10 +961,9 @@ class PDFFindController {
           continue;
         }
         this._pendingFindMatches.add(i);
-        this._extractTextPromises[i].then(() => {
-          this._pendingFindMatches.delete(i);
-          this.#calculateMatch(i);
-        });
+        this._extractTextPromises[i]
+          .then(() => this.#calculateMatch(i))
+          .finally(() => this._pendingFindMatches.delete(i));
       }
     }
 
@@ -1133,6 +1163,7 @@ class PDFFindController {
       source: this,
       state,
       previous,
+      entireWord: this.#state?.entireWord ?? null,
       matchesCount: this.#requestMatchesCount(),
       rawQuery: this.#state?.query ?? null,
     });

@@ -15,7 +15,7 @@
 
 if (typeof PDFJSDev === "undefined" || PDFJSDev.test("GENERIC")) {
   // eslint-disable-next-line no-var
-  var compatibilityParams = Object.create(null);
+  var compatParams = new Map();
   if (
     typeof PDFJSDev !== "undefined" &&
     PDFJSDev.test("LIB") &&
@@ -34,9 +34,17 @@ if (typeof PDFJSDev === "undefined" || PDFJSDev.test("GENERIC")) {
 
   // Limit canvas size to 5 mega-pixels on mobile.
   // Support: Android, iOS
-  (function checkCanvasSizeLimitation() {
+  (function () {
     if (isIOS || isAndroid) {
-      compatibilityParams.maxCanvasPixels = 5242880;
+      compatParams.set("maxCanvasPixels", 5242880);
+    }
+  })();
+
+  // Don't use system fonts on Android (issue 18210).
+  // Support: Android
+  (function () {
+    if (isAndroid) {
+      compatParams.set("useSystemFonts", false);
     }
   })();
 }
@@ -46,6 +54,8 @@ const OptionKind = {
   VIEWER: 0x02,
   API: 0x04,
   WORKER: 0x08,
+  EVENT_DISPATCH: 0x10,
+  UNDEF_ALLOWED: 0x20,
   PREFERENCE: 0x80,
 };
 
@@ -55,6 +65,11 @@ const OptionKind = {
  *       primitive types and cannot rely on any imported types.
  */
 const defaultOptions = {
+  allowedGlobalEvents: {
+    /** @type {Object} */
+    value: null,
+    kind: OptionKind.BROWSER,
+  },
   canvasMaxAreaInBytes: {
     /** @type {number} */
     value: -1,
@@ -63,6 +78,16 @@ const defaultOptions = {
   isInAutomation: {
     /** @type {boolean} */
     value: false,
+    kind: OptionKind.BROWSER,
+  },
+  localeProperties: {
+    /** @type {Object} */
+    value: null,
+    kind: OptionKind.BROWSER,
+  },
+  nimbusDataStr: {
+    /** @type {string} */
+    value: "",
     kind: OptionKind.BROWSER,
   },
   supportsCaretBrowsingMode: {
@@ -95,7 +120,20 @@ const defaultOptions = {
     value: true,
     kind: OptionKind.BROWSER,
   },
+  toolbarDensity: {
+    /** @type {number} */
+    value: 0, // 0 = "normal", 1 = "compact", 2 = "touch"
+    kind: OptionKind.BROWSER + OptionKind.EVENT_DISPATCH,
+  },
 
+  altTextLearnMoreUrl: {
+    /** @type {string} */
+    value:
+      typeof PDFJSDev !== "undefined" && PDFJSDev.test("MOZCENTRAL")
+        ? "https://support.mozilla.org/1/firefox/%VERSION%/%OS%/%LOCALE%/pdf-alt-text"
+        : "",
+    kind: OptionKind.VIEWER + OptionKind.PREFERENCE,
+  },
   annotationEditorMode: {
     /** @type {number} */
     value: 0,
@@ -136,6 +174,11 @@ const defaultOptions = {
     value: false,
     kind: OptionKind.VIEWER + OptionKind.PREFERENCE,
   },
+  enableAltText: {
+    /** @type {boolean} */
+    value: false,
+    kind: OptionKind.VIEWER + OptionKind.PREFERENCE,
+  },
   enableHighlightEditor: {
     // We'll probably want to make some experiments before enabling this
     // in Firefox release, but it has to be temporary.
@@ -150,11 +193,6 @@ const defaultOptions = {
     // TODO: remove it when unnecessary.
     /** @type {boolean} */
     value: typeof PDFJSDev === "undefined" || PDFJSDev.test("TESTING"),
-    kind: OptionKind.VIEWER + OptionKind.PREFERENCE,
-  },
-  enableML: {
-    /** @type {boolean} */
-    value: false,
     kind: OptionKind.VIEWER + OptionKind.PREFERENCE,
   },
   enablePermissions: {
@@ -172,12 +210,12 @@ const defaultOptions = {
     value: typeof PDFJSDev === "undefined" || !PDFJSDev.test("CHROME"),
     kind: OptionKind.VIEWER + OptionKind.PREFERENCE,
   },
-  enableStampEditor: {
+  enableUpdatedAddImage: {
     // We'll probably want to make some experiments before enabling this
     // in Firefox release, but it has to be temporary.
     // TODO: remove it when unnecessary.
     /** @type {boolean} */
-    value: true,
+    value: false,
     kind: OptionKind.VIEWER + OptionKind.PREFERENCE,
   },
   externalLinkRel: {
@@ -356,6 +394,19 @@ const defaultOptions = {
           : "../web/standard_fonts/",
     kind: OptionKind.API,
   },
+  useSystemFonts: {
+    // On Android, there is almost no chance to have the font we want so we
+    // don't use the system fonts in this case (bug 1882613).
+    /** @type {boolean|undefined} */
+    value: (
+      typeof PDFJSDev === "undefined"
+        ? window.isGECKOVIEW
+        : PDFJSDev.test("GECKOVIEW")
+    )
+      ? false
+      : undefined,
+    kind: OptionKind.API + OptionKind.UNDEF_ALLOWED,
+  },
   verbosity: {
     /** @type {number} */
     value: 1,
@@ -421,13 +472,12 @@ if (typeof PDFJSDev === "undefined" || PDFJSDev.test("GENERIC")) {
   };
 }
 
-const userOptions = Object.create(null);
+const userOptions = new Map();
 
 if (typeof PDFJSDev === "undefined" || PDFJSDev.test("GENERIC")) {
-  // Apply any compatibility-values to the user-options,
-  // see also `AppOptions.remove` below.
-  for (const name in compatibilityParams) {
-    userOptions[name] = compatibilityParams[name];
+  // Apply any compatibility-values to the user-options.
+  for (const [name, value] of compatParams) {
+    userOptions.set(name, value);
   }
 }
 
@@ -443,10 +493,12 @@ if (typeof PDFJSDev === "undefined" || PDFJSDev.test("TESTING || LIB")) {
       if (kind & OptionKind.BROWSER) {
         throw new Error(`Cannot mix "PREFERENCE" and "BROWSER" kind: ${name}`);
       }
-      if (
-        typeof compatibilityParams === "object" &&
-        compatibilityParams[name] !== undefined
-      ) {
+      if (kind & OptionKind.UNDEF_ALLOWED) {
+        throw new Error(
+          `Cannot allow \`undefined\` value for "PREFERENCE" kind: ${name}`
+        );
+      }
+      if (typeof compatParams === "object" && compatParams.has(name)) {
         throw new Error(
           `Should not have compatibility-value for "PREFERENCE" kind: ${name}`
         );
@@ -459,74 +511,127 @@ if (typeof PDFJSDev === "undefined" || PDFJSDev.test("TESTING || LIB")) {
       ) {
         throw new Error(`Invalid value for "PREFERENCE" kind: ${name}`);
       }
+    } else if (kind & OptionKind.BROWSER) {
+      if (kind & OptionKind.UNDEF_ALLOWED) {
+        throw new Error(
+          `Cannot allow \`undefined\` value for "BROWSER" kind: ${name}`
+        );
+      }
+      if (typeof compatParams === "object" && compatParams.has(name)) {
+        throw new Error(
+          `Should not have compatibility-value for "BROWSER" kind: ${name}`
+        );
+      }
+      if (value === undefined) {
+        throw new Error(`Invalid value for "BROWSER" kind: ${name}`);
+      }
     }
   }
 }
 
 class AppOptions {
+  static eventBus;
+
   constructor() {
     throw new Error("Cannot initialize AppOptions.");
   }
 
   static get(name) {
-    return userOptions[name] ?? defaultOptions[name]?.value ?? undefined;
+    return userOptions.has(name)
+      ? userOptions.get(name)
+      : defaultOptions[name]?.value;
   }
 
   static getAll(kind = null, defaultOnly = false) {
     const options = Object.create(null);
     for (const name in defaultOptions) {
-      const defaultOption = defaultOptions[name];
+      const defaultOpt = defaultOptions[name];
 
-      if (kind && !(kind & defaultOption.kind)) {
+      if (kind && !(kind & defaultOpt.kind)) {
         continue;
       }
-      options[name] = defaultOnly
-        ? defaultOption.value
-        : userOptions[name] ?? defaultOption.value;
+      options[name] =
+        !defaultOnly && userOptions.has(name)
+          ? userOptions.get(name)
+          : defaultOpt.value;
     }
     return options;
   }
 
   static set(name, value) {
-    userOptions[name] = value;
+    const defaultOpt = defaultOptions[name];
+
+    if (
+      !defaultOpt ||
+      !(
+        typeof value === typeof defaultOpt.value ||
+        (defaultOpt.kind & OptionKind.UNDEF_ALLOWED &&
+          (value === undefined || defaultOpt.value === undefined))
+      )
+    ) {
+      return;
+    }
+    userOptions.set(name, value);
   }
 
-  static setAll(options, init = false) {
-    if ((typeof PDFJSDev === "undefined" || PDFJSDev.test("GENERIC")) && init) {
-      if (this.get("disablePreferences")) {
-        // Give custom implementations of the default viewer a simpler way to
-        // opt-out of having the `Preferences` override existing `AppOptions`.
-        return;
-      }
-      for (const name in userOptions) {
-        // Ignore any compatibility-values in the user-options.
-        if (compatibilityParams[name] !== undefined) {
-          continue;
-        }
-        console.warn(
-          "setAll: The Preferences may override manually set AppOptions; " +
-            'please use the "disablePreferences"-option in order to prevent that.'
-        );
-        break;
-      }
-    }
+  static setAll(options, prefs = false) {
+    let events;
 
     for (const name in options) {
-      userOptions[name] = options[name];
+      const defaultOpt = defaultOptions[name],
+        userOpt = options[name];
+
+      if (
+        !defaultOpt ||
+        !(
+          typeof userOpt === typeof defaultOpt.value ||
+          (defaultOpt.kind & OptionKind.UNDEF_ALLOWED &&
+            (userOpt === undefined || defaultOpt.value === undefined))
+        )
+      ) {
+        continue;
+      }
+      if (prefs) {
+        const { kind } = defaultOpt;
+
+        if (!(kind & OptionKind.BROWSER || kind & OptionKind.PREFERENCE)) {
+          continue;
+        }
+        if (this.eventBus && kind & OptionKind.EVENT_DISPATCH) {
+          (events ||= new Map()).set(name, userOpt);
+        }
+      }
+      userOptions.set(name, userOpt);
     }
-  }
 
-  static remove(name) {
-    delete userOptions[name];
-
-    if (typeof PDFJSDev === "undefined" || PDFJSDev.test("GENERIC")) {
-      // Re-apply a compatibility-value, if it exists, to the user-options.
-      const val = compatibilityParams[name];
-      if (val !== undefined) {
-        userOptions[name] = val;
+    if (events) {
+      for (const [name, value] of events) {
+        this.eventBus.dispatch(name.toLowerCase(), { source: this, value });
       }
     }
   }
+}
+
+if (typeof PDFJSDev === "undefined" || PDFJSDev.test("GENERIC")) {
+  AppOptions._checkDisablePreferences = () => {
+    if (AppOptions.get("disablePreferences")) {
+      // Give custom implementations of the default viewer a simpler way to
+      // opt-out of having the `Preferences` override existing `AppOptions`.
+      return true;
+    }
+    for (const [name] of userOptions) {
+      // Ignore any compatibility-values in the user-options.
+      if (compatParams.has(name)) {
+        continue;
+      }
+      console.warn(
+        "The Preferences may override manually set AppOptions; " +
+          'please use the "disablePreferences"-option to prevent that.'
+      );
+      break;
+    }
+    return false;
+  };
 }
 
 export { AppOptions, OptionKind };

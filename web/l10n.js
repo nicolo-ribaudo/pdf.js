@@ -23,6 +23,8 @@
 class L10n {
   #dir;
 
+  #elements = new Set();
+
   #lang;
 
   #l10n;
@@ -30,7 +32,7 @@ class L10n {
   constructor({ lang, isRTL }, l10n = null) {
     this.#lang = L10n.#fixupLangCode(lang);
     this.#l10n = l10n;
-    this.#dir = isRTL ?? L10n.#isRTL(this.#lang) ? "rtl" : "ltr";
+    this.#dir = (isRTL ?? L10n.#isRTL(this.#lang)) ? "rtl" : "ltr";
   }
 
   _setL10n(l10n) {
@@ -69,12 +71,22 @@ class L10n {
 
   /** @inheritdoc */
   async translate(element) {
+    this.#elements.add(element);
     try {
       this.#l10n.connectRoot(element);
       await this.#l10n.translateRoots();
     } catch {
       // Element is under an existing root, so there is no need to add it again.
     }
+  }
+
+  /** @inheritdoc */
+  async destroy() {
+    for (const element of this.#elements) {
+      this.#l10n.disconnectRoot(element);
+    }
+    this.#elements.clear();
+    this.#l10n.pauseObserving();
   }
 
   /** @inheritdoc */

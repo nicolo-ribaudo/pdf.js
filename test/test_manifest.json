@@ -2984,6 +2984,27 @@
     "type": "eq"
   },
   {
+    "id": "issue11403-text",
+    "file": "pdfs/issue11403_reduced.pdf",
+    "md5": "08287b64f442cb7c329b97c4774aa1cd",
+    "rounds": 1,
+    "type": "text"
+  },
+  {
+    "id": "issue18059",
+    "file": "pdfs/issue18059.pdf",
+    "md5": "b70373894edfcd571a41caa1a0776b6f",
+    "rounds": 1,
+    "type": "eq"
+  },
+  {
+    "id": "issue18059-text",
+    "file": "pdfs/issue18059.pdf",
+    "md5": "b70373894edfcd571a41caa1a0776b6f",
+    "rounds": 1,
+    "type": "text"
+  },
+  {
     "id": "issue11139",
     "file": "pdfs/issue11139.pdf",
     "md5": "006dd4f4bb1878bc14a12072d81a4524",
@@ -5439,6 +5460,15 @@
     "type": "eq"
   },
   {
+    "id": "issue18298",
+    "file": "pdfs/issue18298.pdf",
+    "md5": "30a6108220c41ec88fa92ff45924a6cb",
+    "rounds": 1,
+    "link": true,
+    "lastPage": 1,
+    "type": "eq"
+  },
+  {
     "id": "issue18138",
     "file": "pdfs/issue18138.pdf",
     "md5": "06136495b2dee5faed2e87c4e49d17fd",
@@ -5615,6 +5645,14 @@
     "md5": "93c3e7884f1f2d072442898127e0a6fd",
     "rounds": 1,
     "type": "eq"
+  },
+  {
+    "id": "issue16287",
+    "file": "pdfs/issue16287.pdf",
+    "md5": "cd3e0859140465ae8b8bde0c95cb4929",
+    "rounds": 1,
+    "type": "eq",
+    "about": "Please note that this file currently renders incorrectly."
   },
   {
     "id": "issue2006",
@@ -6469,6 +6507,14 @@
     "link": true,
     "type": "eq",
     "about": "Has a 4 bit per component image with mask and decode."
+  },
+  {
+    "id": "issue2770-text",
+    "file": "pdfs/issue2770.pdf",
+    "md5": "36070d756d06eaa35c2227efb069fb1b",
+    "rounds": 1,
+    "link": true,
+    "type": "text"
   },
   {
     "id": "issue2984",
@@ -10012,6 +10058,7 @@
     "id": "issue17779",
     "file": "pdfs/issue17779.pdf",
     "md5": "764b72e8e56e22662b321b308254fd2b",
+    "talos": false,
     "rounds": 1,
     "link": true,
     "type": "eq"
@@ -10087,6 +10134,41 @@
     "file": "pdfs/bug1539074.pdf",
     "md5": "73922be020083d54747af18a4d5e0768",
     "rounds": 1,
+    "type": "eq"
+  },
+  {
+    "id": "bug1539074_1",
+    "file": "pdfs/bug1539074.1.pdf",
+    "md5": "d15c49142fda433323d3d35f2762cd33",
+    "rounds": 1,
+    "type": "eq"
+  },
+  {
+    "id": "bug1903731",
+    "file": "pdfs/bug1903731.pdf",
+    "md5": "c90d1b03a62d0221e5f5609e3db16a38",
+    "rounds": 1,
+    "link": true,
+    "type": "eq"
+  },
+  {
+    "id": "bug1905623",
+    "file": "pdfs/bug1905623.pdf",
+    "md5": "6c180a4353bda6b3cb0c693c5e5b32c4",
+    "rounds": 1,
+    "link": true,
+    "firstPage": 2,
+    "lastPage": 2,
+    "type": "eq"
+  },
+  {
+    "id": "issue18444",
+    "file": "pdfs/issue18444.pdf",
+    "md5": "233b7b72d67133044338a728d52d58a9",
+    "rounds": 1,
+    "link": true,
+    "firstPage": 1,
+    "lastPage": 1,
     "type": "eq"
   }
 ]

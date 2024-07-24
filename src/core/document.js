@@ -411,6 +411,7 @@ class Page {
     intent,
     cacheKey,
     annotationStorage = null,
+    modifiedIds = null,
   }) {
     const contentStreamPromise = this.getContentStream();
     const resourcesPromise = this.loadResources([
@@ -568,6 +569,7 @@ class Page {
         return { length: pageOpList.totalLength };
       }
       const renderForms = !!(intent & RenderingIntentFlag.ANNOTATIONS_FORMS),
+        isEditing = !!(intent & RenderingIntentFlag.IS_EDITING),
         intentAny = !!(intent & RenderingIntentFlag.ANY),
         intentDisplay = !!(intent & RenderingIntentFlag.DISPLAY),
         intentPrint = !!(intent & RenderingIntentFlag.PRINT);
@@ -579,7 +581,8 @@ class Page {
         if (
           intentAny ||
           (intentDisplay &&
-            annotation.mustBeViewed(annotationStorage, renderForms)) ||
+            annotation.mustBeViewed(annotationStorage, renderForms) &&
+            annotation.mustBeViewedWhenEditing(isEditing, modifiedIds)) ||
           (intentPrint && annotation.mustBePrinted(annotationStorage))
         ) {
           opListPromises.push(
@@ -588,7 +591,6 @@ class Page {
                 partialEvaluator,
                 task,
                 intent,
-                renderForms,
                 annotationStorage
               )
               .catch(function (reason) {

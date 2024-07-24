@@ -219,9 +219,15 @@ class PDFViewer {
 
   #enablePermissions = false;
 
+  #enableUpdatedAddImage = false;
+
   #eventAbortController = null;
 
   #mlManager = null;
+
+  #onPageRenderedCallback = null;
+
+  #switchAnnotationEditorModeTimeoutId = null;
 
   #getAllTextInProgress = false;
 
@@ -287,6 +293,7 @@ class PDFViewer {
       options.annotationEditorHighlightColors || null;
     this.#enableHighlightFloatingButton =
       options.enableHighlightFloatingButton === true;
+    this.#enableUpdatedAddImage = options.enableUpdatedAddImage === true;
     this.imageResourcesPath = options.imageResourcesPath || "";
     this.enablePrintAutoRotate = options.enablePrintAutoRotate || false;
     if (typeof PDFJSDev === "undefined" || PDFJSDev.test("GENERIC")) {
@@ -886,6 +893,7 @@ class PDFViewer {
               pageColors,
               this.#annotationEditorHighlightColors,
               this.#enableHighlightFloatingButton,
+              this.#enableUpdatedAddImage,
               this.#mlManager
             );
             eventBus.dispatch("annotationeditoruimanager", {
@@ -1117,6 +1125,8 @@ class PDFViewer {
 
     this.#hiddenCopyElement?.remove();
     this.#hiddenCopyElement = null;
+
+    this.#cleanupSwitchAnnotationEditorMode();
   }
 
   #ensurePageViewVisible() {
@@ -1651,6 +1661,32 @@ class PDFViewer {
       source: this,
       location: this._location,
     });
+  }
+
+  #switchToEditAnnotationMode() {
+    const visible = this._getVisiblePages();
+    const pagesToRefresh = [];
+    const { ids, views } = visible;
+    for (const page of views) {
+      const { view } = page;
+      if (!view.hasEditableAnnotations()) {
+        ids.delete(view.id);
+        continue;
+      }
+      pagesToRefresh.push(page);
+    }
+
+    if (pagesToRefresh.length === 0) {
+      return null;
+    }
+    this.renderingQueue.renderHighestPriority({
+      first: pagesToRefresh[0],
+      last: pagesToRefresh.at(-1),
+      views: pagesToRefresh,
+      ids,
+    });
+
+    return ids;
   }
 
   containsElement(element) {
@@ -2229,6 +2265,17 @@ class PDFViewer {
     ]);
   }
 
+  #cleanupSwitchAnnotationEditorMode() {
+    if (this.#onPageRenderedCallback) {
+      this.eventBus._off("pagerendered", this.#onPageRenderedCallback);
+      this.#onPageRenderedCallback = null;
+    }
+    if (this.#switchAnnotationEditorModeTimeoutId !== null) {
+      clearTimeout(this.#switchAnnotationEditorModeTimeoutId);
+      this.#switchAnnotationEditorModeTimeoutId = null;
+    }
+  }
+
   get annotationEditorMode() {
     return this.#annotationEditorUIManager
       ? this.#annotationEditorMode
@@ -2259,13 +2306,48 @@ class PDFViewer {
     if (!this.pdfDocument) {
       return;
     }
-    this.#annotationEditorMode = mode;
-    this.eventBus.dispatch("annotationeditormodechanged", {
-      source: this,
-      mode,
-    });
 
-    this.#annotationEditorUIManager.updateMode(mode, editId, isFromKeyboard);
+    const { eventBus } = this;
+    const updater = () => {
+      this.#cleanupSwitchAnnotationEditorMode();
+      this.#annotationEditorMode = mode;
+      this.#annotationEditorUIManager.updateMode(mode, editId, isFromKeyboard);
+      eventBus.dispatch("annotationeditormodechanged", {
+        source: this,
+        mode,
+      });
+    };
+
+    if (
+      mode === AnnotationEditorType.NONE ||
+      this.#annotationEditorMode === AnnotationEditorType.NONE
+    ) {
+      const isEditing = mode !== AnnotationEditorType.NONE;
+      if (!isEditing) {
+        this.pdfDocument.annotationStorage.resetModifiedIds();
+      }
+      for (const pageView of this._pages) {
+        pageView.toggleEditingMode(isEditing);
+      }
+      // We must call #switchToEditAnnotationMode unconditionally to ensure that
+      // page is rendered if it's useful or not.
+      const idsToRefresh = this.#switchToEditAnnotationMode();
+      if (isEditing && idsToRefresh) {
+        // We're editing so we must switch to editing mode when the rendering is
+        // done.
+        this.#cleanupSwitchAnnotationEditorMode();
+        this.#onPageRenderedCallback = ({ pageNumber }) => {
+          idsToRefresh.delete(pageNumber);
+          if (idsToRefresh.size === 0) {
+            this.#switchAnnotationEditorModeTimeoutId = setTimeout(updater, 0);
+          }
+        };
+        const { signal } = this.#eventAbortController;
+        eventBus._on("pagerendered", this.#onPageRenderedCallback, { signal });
+        return;
+      }
+    }
+    updater();
   }
 
   // eslint-disable-next-line accessor-pairs

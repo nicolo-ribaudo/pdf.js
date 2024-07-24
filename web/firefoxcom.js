@@ -14,6 +14,7 @@
  */
 
 import { isPdfFile, PDFDataRangeTransport } from "pdfjs-lib";
+import { AppOptions } from "./app_options.js";
 import { BaseExternalServices } from "./external_services.js";
 import { BasePreferences } from "./preferences.js";
 import { DEFAULT_SCALE_VALUE } from "./ui_utils.js";
@@ -149,6 +150,10 @@ class DownloadManager {
 class Preferences extends BasePreferences {
   async _readFromStorage(prefObj) {
     return FirefoxCom.requestAsync("getPreferences", prefObj);
+  }
+
+  async _writeToStorage(prefObj) {
+    return FirefoxCom.requestAsync("setPreferences", prefObj);
   }
 }
 
@@ -303,8 +308,63 @@ class FirefoxScripting {
 }
 
 class MLManager {
+  #enabled = null;
+
+  eventBus = null;
+
+  constructor(options) {
+    this.enable({ ...options, listenToProgress: false });
+  }
+
+  async isEnabledFor(name) {
+    return !!(await this.#enabled?.get(name));
+  }
+
+  deleteModel(service) {
+    return FirefoxCom.requestAsync("mlDelete", service);
+  }
+
   guess(data) {
     return FirefoxCom.requestAsync("mlGuess", data);
+  }
+
+  enable({ altTextLearnMoreUrl, enableAltText, listenToProgress }) {
+    if (enableAltText) {
+      this.#loadAltTextEngine(listenToProgress);
+    }
+    // The `altTextLearnMoreUrl` is used to provide a link to the user to learn
+    // more about the "alt text" feature.
+    // The link is used in the Alt Text dialog or in the Image Settings.
+    this.altTextLearnMoreUrl = altTextLearnMoreUrl;
+  }
+
+  async #loadAltTextEngine(listenToProgress) {
+    if (this.#enabled?.has("altText")) {
+      // We already have a promise for the "altText" service.
+      return;
+    }
+    const promise = FirefoxCom.requestAsync("loadAIEngine", {
+      service: "moz-image-to-text",
+      listenToProgress,
+    });
+    (this.#enabled ||= new Map()).set("altText", promise);
+    if (listenToProgress) {
+      const callback = ({ detail }) => {
+        this.eventBus.dispatch("loadaiengineprogress", {
+          source: this,
+          detail,
+        });
+        if (detail.finished) {
+          window.removeEventListener("loadAIEngineProgress", callback);
+        }
+      };
+      window.addEventListener("loadAIEngineProgress", callback);
+      promise.then(ok => {
+        if (!ok) {
+          window.removeEventListener("loadAIEngineProgress", callback);
+        }
+      });
+    }
   }
 }
 
@@ -386,26 +446,16 @@ class ExternalServices extends BaseExternalServices {
   }
 
   async createL10n() {
-    const [localeProperties] = await Promise.all([
-      FirefoxCom.requestAsync("getLocaleProperties", null),
-      document.l10n.ready,
-    ]);
-    return new L10n(localeProperties, document.l10n);
+    await document.l10n.ready;
+    return new L10n(AppOptions.get("localeProperties"), document.l10n);
   }
 
   createScripting() {
     return FirefoxScripting;
   }
 
-  async getNimbusExperimentData() {
-    if (!PDFJSDev.test("GECKOVIEW")) {
-      return null;
-    }
-    const nimbusData = await FirefoxCom.requestAsync(
-      "getNimbusExperimentData",
-      null
-    );
-    return nimbusData && JSON.parse(nimbusData);
+  dispatchGlobalEvent(event) {
+    FirefoxCom.request("dispatchGlobalEvent", event);
   }
 }
 

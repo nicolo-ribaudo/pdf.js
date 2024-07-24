@@ -45,7 +45,7 @@ class BaseExternalServices {
     throw new Error("Not implemented: updateEditorStates");
   }
 
-  async getNimbusExperimentData() {}
+  dispatchGlobalEvent(_event) {}
 }
 
 export { BaseExternalServices };

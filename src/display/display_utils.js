@@ -49,6 +49,8 @@ class PixelsPerInch {
  * does the magic for us.
  */
 class DOMFilterFactory extends BaseFilterFactory {
+  #baseUrl;
+
   #_cache;
 
   #_defs;
@@ -121,6 +123,23 @@ class DOMFilterFactory extends BaseFilterFactory {
     return [bufferR.join(","), bufferG.join(","), bufferB.join(",")];
   }
 
+  #createUrl(id) {
+    if (this.#baseUrl === undefined) {
+      // Unless a `<base>`-element is present a relative URL should work.
+      this.#baseUrl = "";
+
+      const url = this.#document.URL;
+      if (url !== this.#document.baseURI) {
+        if (isDataScheme(url)) {
+          warn('#createUrl: ignore "data:"-URL for performance reasons.');
+        } else {
+          this.#baseUrl = url.split("#", 1)[0];
+        }
+      }
+    }
+    return `url(${this.#baseUrl}#${id})`;
+  }
+
   addFilter(maps) {
     if (!maps) {
       return "none";
@@ -146,7 +165,7 @@ class DOMFilterFactory extends BaseFilterFactory {
     //  https://www.w3.org/TR/SVG11/filters.html#feComponentTransferElement
 
     const id = `g_${this.#docId}_transfer_map_${this.#id++}`;
-    const url = `url(#${id})`;
+    const url = this.#createUrl(id);
     this.#cache.set(maps, url);
     this.#cache.set(key, url);
 
@@ -232,7 +251,7 @@ class DOMFilterFactory extends BaseFilterFactory {
       filter
     );
 
-    info.url = `url(#${id})`;
+    info.url = this.#createUrl(id);
     return info.url;
   }
 
@@ -254,7 +273,7 @@ class DOMFilterFactory extends BaseFilterFactory {
     }
 
     const id = `g_${this.#docId}_alpha_map_${this.#id++}`;
-    const url = `url(#${id})`;
+    const url = this.#createUrl(id);
     this.#cache.set(map, url);
     this.#cache.set(key, url);
 
@@ -287,7 +306,7 @@ class DOMFilterFactory extends BaseFilterFactory {
     }
 
     const id = `g_${this.#docId}_luminosity_map_${this.#id++}`;
-    const url = `url(#${id})`;
+    const url = this.#createUrl(id);
     this.#cache.set(map, url);
     this.#cache.set(key, url);
 
@@ -389,7 +408,7 @@ class DOMFilterFactory extends BaseFilterFactory {
       filter
     );
 
-    info.url = `url(#${id})`;
+    info.url = this.#createUrl(id);
     return info.url;
   }
 

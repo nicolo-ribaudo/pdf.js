@@ -709,7 +709,7 @@ class WorkerMessageHandler {
             fileIds: xref.trailer.get("ID") || null,
             startXRef: linearization
               ? startXRef
-              : xref.lastXRefStreamPos ?? startXRef,
+              : (xref.lastXRefStreamPos ?? startXRef),
             filename,
           };
         }
@@ -752,6 +752,7 @@ class WorkerMessageHandler {
             intent: data.intent,
             cacheKey: data.cacheKey,
             annotationStorage: data.annotationStorage,
+            modifiedIds: data.modifiedIds,
           })
           .then(
             function (operatorListInfo) {

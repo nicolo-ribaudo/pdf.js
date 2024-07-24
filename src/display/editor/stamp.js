@@ -36,6 +36,8 @@ class StampEditor extends AnnotationEditor {
 
   #canvas = null;
 
+  #hasMLBeenQueried = false;
+
   #observer = null;
 
   #resizeTimeoutId = null;
@@ -160,26 +162,35 @@ class StampEditor extends AnnotationEditor {
     }
     input.type = "file";
     input.accept = StampEditor.supportedTypesStr;
+    const signal = this._uiManager._signal;
     this.#bitmapPromise = new Promise(resolve => {
-      input.addEventListener("change", async () => {
-        if (!input.files || input.files.length === 0) {
+      input.addEventListener(
+        "change",
+        async () => {
+          if (!input.files || input.files.length === 0) {
+            this.remove();
+          } else {
+            this._uiManager.enableWaiting(true);
+            const data = await this._uiManager.imageManager.getFromFile(
+              input.files[0]
+            );
+            this.#getBitmapFetched(data);
+          }
+          if (typeof PDFJSDev !== "undefined" && PDFJSDev.test("TESTING")) {
+            input.remove();
+          }
+          resolve();
+        },
+        { signal }
+      );
+      input.addEventListener(
+        "cancel",
+        () => {
           this.remove();
-        } else {
-          this._uiManager.enableWaiting(true);
-          const data = await this._uiManager.imageManager.getFromFile(
-            input.files[0]
-          );
-          this.#getBitmapFetched(data);
-        }
-        if (typeof PDFJSDev !== "undefined" && PDFJSDev.test("TESTING")) {
-          input.remove();
-        }
-        resolve();
-      });
-      input.addEventListener("cancel", () => {
-        this.remove();
-        resolve();
-      });
+          resolve();
+        },
+        { signal }
+      );
     }).finally(() => this.#getBitmapDone());
     if (typeof PDFJSDev === "undefined" || !PDFJSDev.test("TESTING")) {
       input.click();
@@ -414,6 +425,43 @@ class StampEditor extends AnnotationEditor {
     return bitmap;
   }
 
+  async #mlGuessAltText(bitmap, width, height) {
+    if (this.#hasMLBeenQueried) {
+      return;
+    }
+    this.#hasMLBeenQueried = true;
+    const isMLEnabled = await this._uiManager.isMLEnabledFor("altText");
+    if (!isMLEnabled || this.hasAltText()) {
+      return;
+    }
+    const offscreen = new OffscreenCanvas(width, height);
+    const ctx = offscreen.getContext("2d", { willReadFrequently: true });
+    ctx.drawImage(
+      bitmap,
+      0,
+      0,
+      bitmap.width,
+      bitmap.height,
+      0,
+      0,
+      width,
+      height
+    );
+    const response = await this._uiManager.mlGuess({
+      service: "moz-image-to-text",
+      request: {
+        data: ctx.getImageData(0, 0, width, height).data,
+        width,
+        height,
+        channels: 4,
+      },
+    });
+    const altText = response?.output || "";
+    if (this.parent && altText && !this.hasAltText()) {
+      this.altTextData = { altText, decorative: false };
+    }
+  }
+
   #drawBitmap(width, height) {
     width = Math.ceil(width);
     height = Math.ceil(height);
@@ -427,37 +475,8 @@ class StampEditor extends AnnotationEditor {
       ? this.#bitmap
       : this.#scaleBitmap(width, height);
 
-    if (this._uiManager.hasMLManager && !this.hasAltText()) {
-      const offscreen = new OffscreenCanvas(width, height);
-      const ctx = offscreen.getContext("2d");
-      ctx.drawImage(
-        bitmap,
-        0,
-        0,
-        bitmap.width,
-        bitmap.height,
-        0,
-        0,
-        width,
-        height
-      );
-      this._uiManager
-        .mlGuess({
-          service: "image-to-text",
-          request: {
-            data: ctx.getImageData(0, 0, width, height).data,
-            width,
-            height,
-            channels: 4,
-          },
-        })
-        .then(response => {
-          const altText = response?.output || "";
-          if (this.parent && altText && !this.hasAltText()) {
-            this.altTextData = { altText, decorative: false };
-          }
-        });
-    }
+    this.#mlGuessAltText(bitmap, width, height);
+
     const ctx = canvas.getContext("2d");
     ctx.filter = this._uiManager.hcmFilter;
     ctx.drawImage(
@@ -529,6 +548,11 @@ class StampEditor extends AnnotationEditor {
    * Create the resize observer.
    */
   #createObserver() {
+    if (!this._uiManager._signal) {
+      // This method is called after the canvas has been created but the canvas
+      // creation is async, so it's possible that the viewer has been closed.
+      return;
+    }
     this.#observer = new ResizeObserver(entries => {
       const rect = entries[0].contentRect;
       if (rect.width && rect.height) {
@@ -536,6 +560,14 @@ class StampEditor extends AnnotationEditor {
       }
     });
     this.#observer.observe(this.div);
+    this._uiManager._signal.addEventListener(
+      "abort",
+      () => {
+        this.#observer?.disconnect();
+        this.#observer = null;
+      },
+      { once: true }
+    );
   }
 
   /** @inheritdoc */
