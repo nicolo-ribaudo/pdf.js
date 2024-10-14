@@ -493,3 +493,9 @@ pdfjs-editor-alt-text-settings-editor-title = Alt text editor
 pdfjs-editor-alt-text-settings-show-dialog-button-label = Show alt text editor right away when adding an image
 pdfjs-editor-alt-text-settings-show-dialog-description = Helps you make sure all your images have alt text.
 pdfjs-editor-alt-text-settings-close-button = Close
+
+# Variables:
+#   $type (String) - the type of annotation that was just removed with an optional quantity.
+pdfjs-editor-messagebar-annotation-removed-text = { $type } removed
+pdfjs-editor-messagebar-annotation-undo-button = Undo
+pdfjs-editor-messagebar-annotation-close-button = Close

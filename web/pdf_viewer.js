@@ -203,6 +203,8 @@ class PDFViewer {
 
   #altTextManager = null;
 
+  #toastManager = null;
+
   #annotationEditorHighlightColors = null;
 
   #annotationEditorMode = AnnotationEditorType.NONE;
@@ -280,6 +282,7 @@ class PDFViewer {
     this.downloadManager = options.downloadManager || null;
     this.findController = options.findController || null;
     this.#altTextManager = options.altTextManager || null;
+    this.#toastManager = options.toastManager || null;
 
     if (this.findController) {
       this.findController.onIsPageVisible = pageNumber =>
@@ -901,7 +904,8 @@ class PDFViewer {
               this.#enableHighlightFloatingButton,
               this.#enableUpdatedAddImage,
               this.#enableNewAltTextWhenAddingImage,
-              this.#mlManager
+              this.#mlManager,
+              this.#toastManager
             );
             eventBus.dispatch("annotationeditoruimanager", {
               source: this,

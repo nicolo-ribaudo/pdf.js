@@ -223,6 +223,7 @@ function getViewerConfiguration() {
       editorHighlightShowAll: document.getElementById("editorHighlightShowAll"),
     },
     printContainer: document.getElementById("printContainer"),
+    annotationRemovedToast: document.getElementById("annotationRemovedToast"),
   };
 }
 

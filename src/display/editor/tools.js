@@ -621,6 +621,8 @@ class AnnotationEditorUIManager {
 
   #viewer = null;
 
+  #toastManager;
+
   static TRANSLATE_SMALL = 1; // page units.
 
   static TRANSLATE_BIG = 10; // page units.
@@ -769,7 +771,8 @@ class AnnotationEditorUIManager {
     enableHighlightFloatingButton,
     enableUpdatedAddImage,
     enableNewAltTextWhenAddingImage,
-    mlManager
+    mlManager,
+    toastManager
   ) {
     const signal = (this._signal = this.#abortController.signal);
     this.#container = container;
@@ -804,6 +807,7 @@ class AnnotationEditorUIManager {
       rotation: 0,
     };
     this.isShiftKeyDown = false;
+    this.#toastManager = toastManager;
 
     if (typeof PDFJSDev !== "undefined" && PDFJSDev.test("TESTING")) {
       Object.defineProperty(this, "reset", {
@@ -2002,6 +2006,12 @@ class AnnotationEditorUIManager {
 
     const editors = [...this.#selectedEditors];
     const cmd = () => {
+      this.#toastManager.show(
+        undo,
+        editors.length > 1
+          ? `${editors.length} annotations`
+          : editors[0].constructor._type
+      );
       for (const editor of editors) {
         editor.remove();
       }
