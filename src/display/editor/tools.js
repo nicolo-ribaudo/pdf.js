@@ -2006,11 +2006,11 @@ class AnnotationEditorUIManager {
 
     const editors = [...this.#selectedEditors];
     const cmd = () => {
-      this.#toastManager.show(
+      this.#toastManager?.show(
         undo,
         editors.length > 1
           ? `${editors.length} annotations`
-          : editors[0].constructor._type
+          : editors[0].editorType
       );
       for (const editor of editors) {
         editor.remove();
