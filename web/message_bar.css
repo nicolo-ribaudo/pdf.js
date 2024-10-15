@@ -135,29 +135,35 @@
 }
 
 #annotationRemovedToast {
-  --message-bar-icon: url(images/secondaryToolbarButton-documentProperties.svg);
-  --message-bar-icon-color: #0060DF;
+	--message-bar-icon: url(images/secondaryToolbarButton-documentProperties.svg);
+	--message-bar-icon-color: #0060df;
 	--message-bar-bg-color: #deeafc;
 	--message-bar-fg-color: #15141a;
 	--text-primary-color: #15141a;
 	--message-bar-border-color: rgb(0 0 0 / 0.08);
 
-	.undoButton {
+	padding: 8px 8px 8px 0;
+
+	#annotationRemovedUndoButton {
 		background: rgba(21, 20, 26, 0.14);
 		border-radius: 4px;
-		font-weight: bold;
+		font-weight: 590;
+		line-height: 19.5px;
 		color: #15141a;
 		border: none;
-    padding: 8px 16px;
+		padding: 8px 16px;
 	}
 
-  > div {
-    align-items: center;
-  }
+	> div {
+		align-items: center;
+	}
 
-  .closeButton {
-    padding-top: 12px;
-  }
+	#annotationRemovedCloseButton {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		margin: 2px;
+	}
 }
 
 #toastContainer {

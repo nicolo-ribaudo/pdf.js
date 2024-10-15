@@ -22,7 +22,7 @@ class ToastManager {
 
   #controller = null;
 
-  #boundHide = null;
+  #boundHide = this.#hide.bind(this);
 
   constructor(elem, duration) {
     this.#toastElement = elem;
@@ -38,10 +38,8 @@ class ToastManager {
     }
     this.#toastElement.setAttribute("data-l10n-args", JSON.stringify({ type }));
     this.#toastElement.removeAttribute("hidden");
-    this.#boundHide = this.#hide.bind(this);
     this.#timeoutID = setTimeout(this.#boundHide, this.#duration);
     this.#controller = new AbortController();
-    console.log(this.#toastElement, this.#toastElement.getElementById);
     this.#toastElement
       .querySelector("#annotationRemovedUndoButton")
       .addEventListener(
