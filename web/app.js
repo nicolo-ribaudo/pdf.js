@@ -87,7 +87,7 @@ import { PDFThumbnailViewer } from "web-pdf_thumbnail_viewer";
 import { PDFViewer } from "./pdf_viewer.js";
 import { Preferences } from "web-preferences";
 import { SecondaryToolbar } from "web-secondary_toolbar";
-import { ToastManager } from "./toast_manager.js";
+import { EditorUndoBar } from "./editor_undo_bar.js";
 import { Toolbar } from "web-toolbar";
 import { ViewHistory } from "./view_history.js";
 
@@ -451,10 +451,9 @@ const PDFViewerApplication = {
           )
         : null;
     }
-    const toastManager = new ToastManager(
-      appConfig.annotationRemovedToast,
-      10000
-    );
+    const editorUndoBar = appConfig.editorUndoBar
+      ? new EditorUndoBar(appConfig.editorUndoBar, /* duration = */ 10000)
+      : null;
 
     const enableHWA = AppOptions.get("enableHWA");
     const pdfViewer = new PDFViewer({
@@ -465,7 +464,7 @@ const PDFViewerApplication = {
       linkService: pdfLinkService,
       downloadManager,
       altTextManager,
-      toastManager,
+      editorUndoBar,
       findController,
       scriptingManager:
         AppOptions.get("enableScripting") && pdfScriptingManager,

@@ -203,8 +203,6 @@ class PDFViewer {
 
   #altTextManager = null;
 
-  #toastManager = null;
-
   #annotationEditorHighlightColors = null;
 
   #annotationEditorMode = AnnotationEditorType.NONE;
@@ -214,6 +212,8 @@ class PDFViewer {
   #annotationMode = AnnotationMode.ENABLE_FORMS;
 
   #containerTopLeft = null;
+
+  #editorUndoBar = null;
 
   #enableHWA = false;
 
@@ -282,7 +282,7 @@ class PDFViewer {
     this.downloadManager = options.downloadManager || null;
     this.findController = options.findController || null;
     this.#altTextManager = options.altTextManager || null;
-    this.#toastManager = options.toastManager || null;
+    this.#editorUndoBar = options.editorUndoBar || null;
 
     if (this.findController) {
       this.findController.onIsPageVisible = pageNumber =>
@@ -905,7 +905,7 @@ class PDFViewer {
               this.#enableUpdatedAddImage,
               this.#enableNewAltTextWhenAddingImage,
               this.#mlManager,
-              this.#toastManager
+              this.#editorUndoBar
             );
             eventBus.dispatch("annotationeditoruimanager", {
               source: this,

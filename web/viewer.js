@@ -223,7 +223,11 @@ function getViewerConfiguration() {
       editorHighlightShowAll: document.getElementById("editorHighlightShowAll"),
     },
     printContainer: document.getElementById("printContainer"),
-    annotationRemovedToast: document.getElementById("annotationRemovedToast"),
+    editorUndoBar: {
+      container: document.getElementById("editorUndoBar"),
+      undoButton: document.getElementById("editorUndoBarUndoButton"),
+      closeButton: document.getElementById("editorUndoBarCloseButton"),
+    },
   };
 }
 

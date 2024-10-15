@@ -562,6 +562,8 @@ class AnnotationEditorUIManager {
 
   #editorsToRescale = new Set();
 
+  #editorUndoBar = null;
+
   #enableHighlightFloatingButton = false;
 
   #enableUpdatedAddImage = false;
@@ -620,8 +622,6 @@ class AnnotationEditorUIManager {
   #container = null;
 
   #viewer = null;
-
-  #toastManager;
 
   static TRANSLATE_SMALL = 1; // page units.
 
@@ -772,7 +772,7 @@ class AnnotationEditorUIManager {
     enableUpdatedAddImage,
     enableNewAltTextWhenAddingImage,
     mlManager,
-    toastManager
+    editorUndoBar
   ) {
     const signal = (this._signal = this.#abortController.signal);
     this.#container = container;
@@ -807,7 +807,7 @@ class AnnotationEditorUIManager {
       rotation: 0,
     };
     this.isShiftKeyDown = false;
-    this.#toastManager = toastManager;
+    this.#editorUndoBar = editorUndoBar;
 
     if (typeof PDFJSDev !== "undefined" && PDFJSDev.test("TESTING")) {
       Object.defineProperty(this, "reset", {
@@ -2006,7 +2006,7 @@ class AnnotationEditorUIManager {
 
     const editors = [...this.#selectedEditors];
     const cmd = () => {
-      this.#toastManager?.show(
+      this.#editorUndoBar?.show(
         undo,
         editors.length > 1
           ? `${editors.length} annotations`

@@ -134,7 +134,7 @@
 	}
 }
 
-#annotationRemovedToast {
+#editorUndoBar {
 	--message-bar-icon: url(images/secondaryToolbarButton-documentProperties.svg);
 	--message-bar-icon-color: #0060df;
 	--message-bar-bg-color: #deeafc;
@@ -144,7 +144,7 @@
 
 	padding: 8px 8px 8px 0;
 
-	#annotationRemovedUndoButton {
+	#editorUndoBarUndoButton {
 		background: rgba(21, 20, 26, 0.14);
 		border-radius: 4px;
 		font-weight: 590;
@@ -158,7 +158,7 @@
 		align-items: center;
 	}
 
-	#annotationRemovedCloseButton {
+	#editorUndoBarCloseButton {
 		display: flex;
 		align-items: center;
 		justify-content: center;

@@ -496,6 +496,6 @@ pdfjs-editor-alt-text-settings-close-button = Close
 
 # Variables:
 #   $type (String) - the type of annotation that was just removed with an optional quantity.
-pdfjs-editor-messagebar-annotation-removed-text = { $type } removed
-pdfjs-editor-messagebar-annotation-undo-button = Undo
-pdfjs-editor-messagebar-annotation-close-button = Close
+pdfjs-editor-undo-bar-text = { $type } removed
+pdfjs-editor-undo-bar-undo-button = Undo
+pdfjs-editor-undo-bar-close-button = Close
