@@ -453,7 +453,7 @@ const PDFViewerApplication = {
         : null;
     }
     const editorUndoBar = this.editorUndoBar = appConfig.editorUndoBar
-      ? new EditorUndoBar(appConfig.editorUndoBar)
+      ? new EditorUndoBar(appConfig.editorUndoBar, eventBus)
       : null;
 
     const enableHWA = AppOptions.get("enableHWA");

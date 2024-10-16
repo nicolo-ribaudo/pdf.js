@@ -22,17 +22,26 @@ class EditorUndoBar {
 
   #controller = null;
 
+  #eventBus;
+
   isOpen = false;
 
   #message;
 
   #undoButton;
 
-  constructor({ container, message, undoButton, closeButton }) {
+  constructor({ container, message, undoButton, closeButton }, eventBus) {
     this.#container = container;
     this.#message = message;
     this.#undoButton = undoButton;
     this.#closeButton = closeButton;
+    this.#eventBus = eventBus;
+
+    // Caveat: we have to pick between registering these everytime the bar is
+    // shown and not having the ability to cleanup using AbortController.
+    this.#closeButton.addEventListener("click", this.#boundHide);
+    this.#eventBus.on("print", this.#boundHide);
+    this.#eventBus.on("download", this.#boundHide);
   }
 
   show(action, type) {
@@ -52,7 +61,6 @@ class EditorUndoBar {
       },
       opts
     );
-    this.#closeButton.addEventListener("click", this.#boundHide, opts);
     this.#undoButton.focus();
   }
 
