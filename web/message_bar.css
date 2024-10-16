@@ -55,6 +55,7 @@
 
   > div {
     display: flex;
+    padding-inline: 16px 32px;
     align-items: flex-start;
     gap: 8px;
     align-self: stretch;
@@ -133,18 +134,17 @@
 }
 
 #editorUndoBar {
-  /* positioning */
-  position: fixed;
-  bottom: 100px;
-  left: 50%;
-  transform: translateX(-50%);
-
   --message-bar-icon: url(images/secondaryToolbarButton-documentProperties.svg);
   --message-bar-icon-color: #0060df;
   --message-bar-bg-color: #deeafc;
   --message-bar-fg-color: #15141a;
   --text-primary-color: #15141a;
   --message-bar-border-color: rgb(0 0 0 / 0.08);
+
+  position: fixed;
+  bottom: 100px;
+  left: 50%;
+  transform: translateX(-50%);
 
   font-family: sans-serif;
   padding: 8px 8px 8px 0;

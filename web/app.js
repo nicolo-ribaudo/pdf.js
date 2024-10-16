@@ -183,6 +183,7 @@ const PDFViewerApplication = {
   _isCtrlKeyDown: false,
   _caretBrowsing: null,
   _isScrolling: false,
+  editorUndoBar: null,
 
   // Called once when the document is loaded.
   async initialize(appConfig) {
@@ -451,7 +452,7 @@ const PDFViewerApplication = {
           )
         : null;
     }
-    const editorUndoBar = appConfig.editorUndoBar
+    const editorUndoBar = this.editorUndoBar = appConfig.editorUndoBar
       ? new EditorUndoBar(appConfig.editorUndoBar)
       : null;
 
@@ -2965,6 +2966,10 @@ function onKeyDown(evt) {
         }
         if (!this.supportsIntegratedFind && this.findBar?.opened) {
           this.findBar.close();
+          handled = true;
+        }
+        if (this.editorUndoBar?.isOpen) {
+          this.editorUndoBar.hide();
           handled = true;
         }
         break;

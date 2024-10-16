@@ -14,13 +14,15 @@
  */
 
 class EditorUndoBar {
-  #boundHide = this.#hide.bind(this);
+  #boundHide = this.hide.bind(this);
 
   #closeButton;
 
   #container;
 
   #controller = null;
+
+  isOpen = false;
 
   #message;
 
@@ -34,9 +36,10 @@ class EditorUndoBar {
   }
 
   show(action, type) {
-    this.#hide();
+    this.hide();
     this.#message.setAttribute("data-l10n-args", JSON.stringify({ type }));
     this.#container.hidden = false;
+    this.isOpen = true;
 
     this.#controller = new AbortController();
     const opts = { signal: this.#controller.signal };
@@ -45,7 +48,7 @@ class EditorUndoBar {
       "click",
       () => {
         action();
-        this.#hide();
+        this.hide();
       },
       opts
     );
@@ -53,7 +56,11 @@ class EditorUndoBar {
     this.#undoButton.focus();
   }
 
-  #hide() {
+  hide() {
+    if (!this.isOpen) {
+      return;
+    }
+    this.isOpen = false;
     this.#container.hidden = true;
     this.#controller?.abort();
     this.#controller = null;
