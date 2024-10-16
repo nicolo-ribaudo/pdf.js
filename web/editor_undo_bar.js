@@ -14,15 +14,9 @@
  */
 
 class EditorUndoBar {
-  #boundHide = this.hide.bind(this);
-
-  #closeButton;
-
   #container;
 
   #controller = null;
-
-  #eventBus;
 
   isOpen = false;
 
@@ -34,14 +28,13 @@ class EditorUndoBar {
     this.#container = container;
     this.#message = message;
     this.#undoButton = undoButton;
-    this.#closeButton = closeButton;
-    this.#eventBus = eventBus;
 
     // Caveat: we have to pick between registering these everytime the bar is
     // shown and not having the ability to cleanup using AbortController.
-    this.#closeButton.addEventListener("click", this.#boundHide);
-    this.#eventBus.on("print", this.#boundHide);
-    this.#eventBus.on("download", this.#boundHide);
+    const boundHide = this.hide.bind(this);
+    closeButton.addEventListener("click", boundHide);
+    eventBus._on("beforeprint", boundHide);
+    eventBus._on("download", boundHide);
   }
 
   show(action, type) {
