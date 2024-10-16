@@ -14,29 +14,33 @@
  */
 
 class EditorUndoBar {
-  #container;
-
-  #undoButton;
+  #boundHide = this.#hide.bind(this);
 
   #closeButton;
 
+  #container;
+
   #controller = null;
 
-  #boundHide = this.#hide.bind(this);
+  #message;
 
-  constructor({ container, undoButton, closeButton }) {
+  #undoButton;
+
+  constructor({ container, message, undoButton, closeButton }) {
     this.#container = container;
+    this.#message = message;
     this.#undoButton = undoButton;
     this.#closeButton = closeButton;
   }
 
   show(action, type) {
     this.#hide();
-    this.#container.setAttribute("data-l10n-args", JSON.stringify({ type }));
+    this.#message.setAttribute("data-l10n-args", JSON.stringify({ type }));
     this.#container.hidden = false;
 
     this.#controller = new AbortController();
     const opts = { signal: this.#controller.signal };
+
     this.#undoButton.addEventListener(
       "click",
       () => {

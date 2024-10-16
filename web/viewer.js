@@ -225,6 +225,7 @@ function getViewerConfiguration() {
     printContainer: document.getElementById("printContainer"),
     editorUndoBar: {
       container: document.getElementById("editorUndoBar"),
+      message: document.getElementById("editorUndoBarMessage"),
       undoButton: document.getElementById("editorUndoBarUndoButton"),
       closeButton: document.getElementById("editorUndoBarCloseButton"),
     },
