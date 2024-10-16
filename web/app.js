@@ -68,6 +68,7 @@ import { AltTextManager } from "web-alt_text_manager";
 import { AnnotationEditorParams } from "web-annotation_editor_params";
 import { CaretBrowsingMode } from "./caret_browsing.js";
 import { DownloadManager } from "web-download_manager";
+import { EditorUndoBar } from "./editor_undo_bar.js";
 import { OverlayManager } from "./overlay_manager.js";
 import { PasswordPrompt } from "./password_prompt.js";
 import { PDFAttachmentViewer } from "web-pdf_attachment_viewer";
@@ -87,7 +88,6 @@ import { PDFThumbnailViewer } from "web-pdf_thumbnail_viewer";
 import { PDFViewer } from "./pdf_viewer.js";
 import { Preferences } from "web-preferences";
 import { SecondaryToolbar } from "web-secondary_toolbar";
-import { EditorUndoBar } from "./editor_undo_bar.js";
 import { Toolbar } from "web-toolbar";
 import { ViewHistory } from "./view_history.js";
 
@@ -452,7 +452,7 @@ const PDFViewerApplication = {
         : null;
     }
     const editorUndoBar = appConfig.editorUndoBar
-      ? new EditorUndoBar(appConfig.editorUndoBar, /* duration = */ 10000)
+      ? new EditorUndoBar(appConfig.editorUndoBar)
       : null;
 
     const enableHWA = AppOptions.get("enableHWA");

@@ -20,19 +20,14 @@ class EditorUndoBar {
 
   #closeButton;
 
-  #duration;
-
-  #timeoutId = null;
-
   #controller = null;
 
   #boundHide = this.#hide.bind(this);
 
-  constructor({ container, undoButton, closeButton }, duration) {
+  constructor({ container, undoButton, closeButton }) {
     this.#container = container;
     this.#undoButton = undoButton;
     this.#closeButton = closeButton;
-    this.#duration = duration;
   }
 
   show(action, type) {
@@ -40,7 +35,6 @@ class EditorUndoBar {
     this.#container.setAttribute("data-l10n-args", JSON.stringify({ type }));
     this.#container.hidden = false;
 
-    this.#timeoutId = setTimeout(this.#boundHide, this.#duration);
     this.#controller = new AbortController();
     const opts = { signal: this.#controller.signal };
     this.#undoButton.addEventListener(
@@ -52,14 +46,11 @@ class EditorUndoBar {
       opts
     );
     this.#closeButton.addEventListener("click", this.#boundHide, opts);
+    this.#undoButton.focus();
   }
 
   #hide() {
     this.#container.hidden = true;
-    if (this.#timeoutId) {
-      clearTimeout(this.#timeoutId);
-      this.#timeoutId = null;
-    }
     this.#controller?.abort();
     this.#controller = null;
   }
