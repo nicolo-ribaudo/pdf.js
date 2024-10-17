@@ -290,7 +290,29 @@
         --message-bar-icon-color: CanvasText;
       }
 
-      position: relative;
+      > div {
+        &::before, > div {
+          margin-block: 4px;
+        }
+
+        > div {
+          display: flex;
+          flex-direction: column;
+          align-items: flex-start;
+          gap: 8px;
+          flex: 1 0 0;
+          margin-block: 4px;
+
+          .title {
+            font-size: 13px;
+            font-weight: 590;
+          }
+
+          .description {
+            font-size: 13px;
+          }
+        }
+      }
     }
 
     .toggler {
