@@ -73,6 +73,7 @@ import { PDFNetworkStream } from "display-network";
 import { PDFNodeStream } from "display-node_stream";
 import { TextLayer } from "./text_layer.js";
 import { XfaText } from "./xfa_text.js";
+import { CanvasRecorder } from "./canvas_recorder.js";
 
 const DEFAULT_RANGE_CHUNK_SIZE = 65536; // 2^16 = 65536
 const RENDERING_CANCELLED_TIMEOUT = 100; // ms
@@ -1460,6 +1461,7 @@ class PDFPageProxy {
     pageColors = null,
     printAnnotationStorage = null,
     isEditing = false,
+    partialViewport = null,
   }) {
     this._stats?.time("Overall");
 
@@ -1508,8 +1510,32 @@ class PDFPageProxy {
       this._pumpOperatorList(intentArgs);
     }
 
+    const recordingContext = this._recordedGroups
+      ? canvasContext
+      : new CanvasRecorder(canvasContext);
+    if (recordingContext !== canvasContext) {
+      console.log("RECORDING BOXES");
+    }
+
+    const { width: canvasWidth, height: canvasHeight } = canvasContext.canvas;
+
     const complete = error => {
       intentState.renderTasks.delete(internalRenderTask);
+
+      this._recordedGroups ??=
+        CanvasRecorder.getFinishedGroups(recordingContext);
+
+      for (const group of this._recordedGroups) {
+        canvasContext.setLineDash([3, 3]);
+        canvasContext.strokeStyle = "red";
+        canvasContext.lineWidth = 3;
+        canvasContext.strokeRect(
+          group.minX * canvasWidth,
+          group.minY * canvasHeight,
+          (group.maxX - group.minX) * canvasWidth,
+          (group.maxY - group.minY) * canvasHeight
+        );
+      }
 
       // Attempt to reduce memory usage during *printing*, by always running
       // cleanup immediately once rendering has finished.
@@ -1539,11 +1565,14 @@ class PDFPageProxy {
       }
     };
 
+    //console.clear();
+    //console.log("BOX", partialViewport);
+
     const internalRenderTask = new InternalRenderTask({
       callback: complete,
       // Only include the required properties, and *not* the entire object.
       params: {
-        canvasContext,
+        canvasContext: recordingContext,
         viewport,
         transform,
         background,
@@ -1558,6 +1587,39 @@ class PDFPageProxy {
       useRequestAnimationFrame: !intentPrint,
       pdfBug: this._pdfBug,
       pageColors,
+      filter: (index, name) => {
+        if (!this._recordedGroups) return true;
+
+        const group = this._recordedGroups.find(({ data }) => {
+          if ("idx" in data) {
+            return data.idx === index;
+          }
+          if ("startIdx" in data) {
+            return data.startIdx <= index && index <= data.endIdx;
+          }
+          return false;
+        });
+
+        // if (!group) {
+        //   console.log("NO GROUP", index, name);
+        // }
+        if (!group) return true;
+
+        // TODO: Why 2? pixel ratio?
+        const res =
+          group.minX * canvasWidth <= partialViewport.maxX * 2 &&
+          group.maxX * canvasWidth >= partialViewport.minX * 2 &&
+          group.minY * canvasHeight <= partialViewport.maxY * 2 &&
+          group.maxY * canvasHeight >= partialViewport.minY * 2;
+
+        // if (!res) {
+        //   console.log("SKIPPING", index, name, group);
+        // } else {
+        //   console.log("NOT SKIPPING", index, name, group);
+        // }
+
+        return res;
+      },
     });
 
     (intentState.renderTasks ||= new Set()).add(internalRenderTask);
@@ -3340,6 +3402,7 @@ class InternalRenderTask {
     useRequestAnimationFrame = false,
     pdfBug = false,
     pageColors = null,
+    filter = null,
   }) {
     this.callback = callback;
     this.params = params;
@@ -3353,6 +3416,7 @@ class InternalRenderTask {
     this.filterFactory = filterFactory;
     this._pdfBug = pdfBug;
     this.pageColors = pageColors;
+    this._filter = filter;
 
     this.running = false;
     this.graphicsReadyCallback = null;
@@ -3483,7 +3547,8 @@ class InternalRenderTask {
       this.operatorList,
       this.operatorListIdx,
       this._continueBound,
-      this.stepper
+      this.stepper,
+      this._filter
     );
     if (this.operatorListIdx === this.operatorList.argsArray.length) {
       this.running = false;

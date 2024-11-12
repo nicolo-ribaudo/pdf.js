@@ -2047,6 +2047,9 @@ const PDFViewerApplication = {
     window.addEventListener("click", onClick.bind(this), { signal });
     window.addEventListener("keydown", onKeyDown.bind(this), { signal });
     window.addEventListener("keyup", onKeyUp.bind(this), { signal });
+    window.addEventListener("mousedown", onMouseDown.bind(this), { signal });
+    window.addEventListener("mousemove", onMouseMove.bind(this), { signal });
+    window.addEventListener("mouseup", onMouseUp.bind(this), { signal });
     window.addEventListener(
       "resize",
       () => eventBus.dispatch("resize", { source: window }),
@@ -2764,15 +2767,93 @@ function onClick(evt) {
   }
 }
 
+let modifiers = 0;
+let rectangle = null;
+let rectangleStart = null;
+let rectangleEnd = null;
+
+/** @param {MouseEvent} evt */
+function onMouseDown(evt) {
+  if (!(evt.target instanceof HTMLCanvasElement)) return;
+  if (!evt.altKey || !evt.shiftKey || !evt.ctrlKey) return;
+
+  if (!rectangle) {
+    rectangle = document.createElement("div");
+    rectangle.style.position = "absolute";
+    rectangle.style.border = "3px solid blue";
+    rectangle.style.background = "transparent";
+    rectangle.style.pointerEvents = "none";
+    rectangle.setAttribute("data-do-not-reset", "");
+  }
+
+  const bbox = evt.target.getBoundingClientRect();
+  rectangleStart = [evt.clientX - bbox.left, evt.clientY - bbox.top];
+  rectangleEnd = [rectangleStart[0], rectangleStart[1]];
+
+  rectangle.style.left = `${rectangleStart[0]}px`;
+  rectangle.style.top = `${rectangleStart[1]}px`;
+  rectangle.style.width = "0";
+  rectangle.style.height = "0";
+
+  evt.target.closest(".page").appendChild(rectangle);
+}
+
+function onMouseMove(evt) {
+  if (!rectangleStart) return;
+
+  const bbox = evt.target.getBoundingClientRect();
+  rectangleEnd[0] = evt.clientX - bbox.left;
+  rectangleEnd[1] = evt.clientY - bbox.top;
+
+  rectangle.style.left = `${Math.min(rectangleStart[0], rectangleEnd[0])}px`;
+  rectangle.style.top = `${Math.min(rectangleStart[1], rectangleEnd[1])}px`;
+  rectangle.style.width = `${Math.abs(rectangleEnd[0] - rectangleStart[0])}px`;
+  rectangle.style.height = `${Math.abs(rectangleEnd[1] - rectangleStart[1])}px`;
+}
+
+function onMouseUp(evt) {
+  if (!rectangleStart) return;
+
+  const minX = Math.min(rectangleStart[0], rectangleEnd[0]);
+  const minY = Math.min(rectangleStart[1], rectangleEnd[1]);
+  const maxX = Math.max(rectangleStart[0], rectangleEnd[0]);
+  const maxY = Math.max(rectangleStart[1], rectangleEnd[1]);
+
+  const pageIdx = Number(evt.target.closest(".page").dataset.pageNumber) - 1;
+
+  const pageView = PDFViewerApplication.pdfViewer.getPageView(pageIdx);
+  pageView.reset();
+  pageView._partialViewport = { minX, maxX, minY, maxY };
+
+  PDFViewerApplication.pdfViewer.renderingQueue.renderView(pageView);
+
+  rectangleStart = null;
+  rectangleEnd = null;
+}
+
 function onKeyUp(evt) {
   // evt.ctrlKey is false hence we use evt.key.
   if (evt.key === "Control") {
     this._isCtrlKeyDown = false;
   }
+
+  if (evt.key === "Control") modifiers &= ~1;
+  if (evt.key === "Shift") modifiers &= ~2;
+  if (evt.key === "Alt") modifiers &= ~4;
+  if (modifiers !== 7) {
+    this.appConfig.viewerContainer.classList.remove("canvas-only");
+  }
 }
 
 function onKeyDown(evt) {
   this._isCtrlKeyDown = evt.key === "Control";
+
+  if (evt.key === "Control") modifiers |= 1;
+  if (evt.key === "Shift") modifiers |= 2;
+  if (evt.key === "Alt") modifiers |= 4;
+  if (modifiers === 7) {
+    this.appConfig.viewerContainer.classList.add("canvas-only");
+  }
 
   if (this.overlayManager.active) {
     return;

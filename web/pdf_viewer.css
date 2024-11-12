@@ -220,3 +220,14 @@
   margin: 0 auto;
   border: 2px solid transparent;
 }
+
+#viewer.canvas-only {
+  .textLayer,
+  .annotationLayer,
+  .annotationEditorLayer {
+    &,
+    * {
+      pointer-events: none !important;
+    }
+  }
+}

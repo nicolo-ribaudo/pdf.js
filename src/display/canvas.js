@@ -38,6 +38,7 @@ import {
   TilingPattern,
 } from "./pattern_helper.js";
 import { convertBlackAndWhiteToRGBA } from "../shared/image_utils.js";
+import { CanvasRecorder } from "./canvas_recorder.js";
 
 // <canvas> contexts store most of the state we need natively.
 // However, PDF needs a bit more state, which we store here.
@@ -56,6 +57,12 @@ const EXECUTION_STEPS = 10;
 const MAX_SIZE_TO_COMPILE = 1000;
 
 const FULL_CHUNK_HEIGHT = 16;
+
+function setter(obj, name) {
+  return val => {
+    obj[name] = val;
+  };
+}
 
 /**
  * Overrides certain methods on a 2d ctx so that when they are called they
@@ -932,7 +939,8 @@ class CanvasGraphics {
     operatorList,
     executionStartIdx,
     continueCallback,
-    stepper
+    stepper,
+    filter
   ) {
     const argsArray = operatorList.argsArray;
     const fnArray = operatorList.fnArray;
@@ -960,20 +968,23 @@ class CanvasGraphics {
         return i;
       }
 
-      fnId = fnArray[i];
+      if (!filter || filter(i, this[fnArray[i]]?.name)) {
+        fnId = fnArray[i];
 
-      if (fnId !== OPS.dependency) {
-        // eslint-disable-next-line prefer-spread
-        this[fnId].apply(this, argsArray[i]);
-      } else {
-        for (const depObjId of argsArray[i]) {
-          const objsPool = depObjId.startsWith("g_") ? commonObjs : objs;
+        if (fnId !== OPS.dependency) {
+          // eslint-disable-next-line prefer-spread
+          const setup = this[fnId].apply(this, argsArray[i]);
+          if (setup) setup(i);
+        } else {
+          for (const depObjId of argsArray[i]) {
+            const objsPool = depObjId.startsWith("g_") ? commonObjs : objs;
 
-          // If the promise isn't resolved yet, add the continueCallback
-          // to the promise and bail out.
-          if (!objsPool.has(depObjId)) {
-            objsPool.get(depObjId, continueCallback);
-            return i;
+            // If the promise isn't resolved yet, add the continueCallback
+            // to the promise and bail out.
+            if (!objsPool.has(depObjId)) {
+              objsPool.get(depObjId, continueCallback);
+              return i;
+            }
           }
         }
       }
@@ -1629,6 +1640,11 @@ class CanvasGraphics {
       (currentTransform[1] === 0 && currentTransform[2] === 0);
     const minMaxForBezier = isScalingMatrix ? minMax.slice(0) : null;
 
+    //const group = CanvasRecorder.startGroupRecording(ctx, {
+    //  type: "path",
+    //  idx: -1,
+    //});
+
     for (let i = 0, j = 0, ii = ops.length; i < ii; i++) {
       switch (ops[i] | 0) {
         case OPS.rectangle:
@@ -1753,6 +1769,11 @@ class CanvasGraphics {
     }
 
     current.setCurrentPoint(x, y);
+
+    //CanvasRecorder.endGroupRecording(ctx);
+    //return group ? setter(group.data, "idx") : null;
+
+    return setter(this, "_pathStartIdx");
   }
 
   closePath() {
@@ -1780,16 +1801,22 @@ class CanvasGraphics {
         this.rescaleAndStroke(/* saveRestore */ true);
       }
     }
+
+    let res;
     if (consumePath) {
-      this.consumePath(this.current.getClippedPathBoundingBox());
+      const bbox = this.current.getClippedPathBoundingBox();
+      res = this.consumePath(bbox);
     }
+
     // Restore the global alpha to the fill alpha
     ctx.globalAlpha = this.current.fillAlpha;
+
+    return res;
   }
 
   closeStroke() {
     this.closePath();
-    this.stroke();
+    return this.stroke();
   }
 
   fill(consumePath = true) {
@@ -1823,40 +1850,40 @@ class CanvasGraphics {
       ctx.restore();
     }
     if (consumePath) {
-      this.consumePath(intersect);
+      return this.consumePath(intersect);
     }
   }
 
   eoFill() {
     this.pendingEOFill = true;
-    this.fill();
+    return this.fill();
   }
 
   fillStroke() {
     this.fill(false);
     this.stroke(false);
 
-    this.consumePath();
+    return this.consumePath();
   }
 
   eoFillStroke() {
     this.pendingEOFill = true;
-    this.fillStroke();
+    return this.fillStroke();
   }
 
   closeFillStroke() {
     this.closePath();
-    this.fillStroke();
+    return this.fillStroke();
   }
 
   closeEOFillStroke() {
     this.pendingEOFill = true;
     this.closePath();
-    this.fillStroke();
+    return this.fillStroke();
   }
 
   endPath() {
-    this.consumePath();
+    return this.consumePath();
   }
 
   // Clipping
@@ -1874,27 +1901,38 @@ class CanvasGraphics {
     this.current.textMatrixScale = 1;
     this.current.x = this.current.lineX = 0;
     this.current.y = this.current.lineY = 0;
+
+    const group = CanvasRecorder.startGroupRecording(this.ctx, {
+      type: "text",
+      startIdx: -1,
+      endIdx: -1,
+    });
+
+    return group ? setter(group.data, "startIdx") : null;
   }
 
   endText() {
     const paths = this.pendingTextPaths;
     const ctx = this.ctx;
-    if (paths === undefined) {
+    if (paths !== undefined) {
+      ctx.save();
       ctx.beginPath();
-      return;
+      for (const path of paths) {
+        ctx.setTransform(...path.transform);
+        ctx.translate(path.x, path.y);
+        path.addToPath(ctx, path.fontSize);
+      }
+      ctx.restore();
+      ctx.clip();
     }
 
-    ctx.save();
+    const group = CanvasRecorder.endGroupRecording(this.ctx);
+
     ctx.beginPath();
-    for (const path of paths) {
-      ctx.setTransform(...path.transform);
-      ctx.translate(path.x, path.y);
-      path.addToPath(ctx, path.fontSize);
-    }
-    ctx.restore();
-    ctx.clip();
-    ctx.beginPath();
+
     delete this.pendingTextPaths;
+
+    return group ? setter(group.data, "endIdx") : null;
   }
 
   setCharSpacing(spacing) {
@@ -2876,7 +2914,14 @@ class CanvasGraphics {
       return;
     }
 
+    const group = CanvasRecorder.startGroupRecording(this.ctx, {
+      type: "image",
+      idx: -1,
+    });
     this.paintInlineImageXObject(imgData);
+    CanvasRecorder.endGroupRecording(this.ctx);
+
+    return group ? setter(group.data, "idx") : null;
   }
 
   paintImageXObjectRepeat(objId, scaleX, scaleY, positions) {
@@ -3115,8 +3160,23 @@ class CanvasGraphics {
       }
       this.pendingClip = null;
     }
+
+    let group = null;
+    if (clipBox) {
+      group = CanvasRecorder.pushGroup(
+        ctx,
+        clipBox[0],
+        clipBox[2],
+        clipBox[1],
+        clipBox[3],
+        { type: "path", startIdx: this._pathStartIdx, endIdx: -1 }
+      );
+    }
+
     this.current.startNewPathAndClipBox(this.current.clipBox);
     ctx.beginPath();
+
+    return group ? setter(group.data, "endIdx") : null;
   }
 
   getSinglePixelWidth() {

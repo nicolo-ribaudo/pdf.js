@@ -148,6 +148,8 @@ class PDFPageView {
 
   #layers = [null, null, null, null];
 
+  _partialViewport = null;
+
   /**
    * @param {PDFPageViewOptions} options
    */
@@ -564,6 +566,7 @@ class PDFPageView {
         case textLayerNode:
           continue;
       }
+      if (node.hasAttribute("data-do-not-reset")) continue;
       node.remove();
       const layerIndex = this.#layers.indexOf(node);
       if (layerIndex >= 0) {
@@ -1089,6 +1092,7 @@ class PDFPageView {
       annotationCanvasMap: this._annotationCanvasMap,
       pageColors,
       isEditing: this.#isEditing,
+      partialViewport: this._partialViewport,
     };
     const renderTask = (this.renderTask = pdfPage.render(renderContext));
     renderTask.onContinue = renderContinueCallback;
