@@ -1,5 +1,22 @@
 const strokeDependencies = ["lineCap", "lineJoin", "lineWidth", "strokeStyle"];
 const fillDependencies = ["fillStyle"];
+const relativeTransformMethods = ["transform", "translate", "rotate", "scale"];
+const transformedMethods = [
+  "arc",
+  "arcTo",
+  "beizerCurveTo",
+  // "drawImage",
+  "ellipse",
+  // "fillRect",
+  // "fillText",
+  "lineTo",
+  "moveTo",
+  "quadraticCurveTo",
+  "rect",
+  "roundRect",
+  "strokeRect",
+  "strokeText",
+];
 
 /** @implements {CanvasRenderingContext2D} */
 export class CanvasRecorder {
@@ -15,6 +32,8 @@ export class CanvasRecorder {
   #closedGroups = [];
 
   #dependenciesIds = Object.create(null);
+
+  #transformDepsIds = [];
 
   #nextCommandsId = -1;
 
@@ -125,6 +144,8 @@ export class CanvasRecorder {
     currentGroup.maxX = Math.max(currentGroup.maxX, maxX);
     currentGroup.minY = Math.min(currentGroup.minY, minY);
     currentGroup.maxY = Math.max(currentGroup.maxY, maxY);
+
+    this.#registerTransformDependencies();
   }
 
   #registerDependencies(names) {
@@ -135,6 +156,11 @@ export class CanvasRecorder {
         dependenciesSet.add(depId);
       }
     }
+  }
+
+  #registerTransformDependencies() {
+    const dependenciesSet = this.#currentGroup.dependencies;
+    this.#transformDepsIds.forEach(dependenciesSet.add, dependenciesSet);
   }
 
   get canvas() {
@@ -173,6 +199,7 @@ export class CanvasRecorder {
 
   save() {
     this.#dependenciesIds = Object.create(this.#dependenciesIds);
+    this.#transformDepsIds = Object.create(this.#transformDepsIds);
     this.#ctx.save();
   }
 
@@ -180,6 +207,7 @@ export class CanvasRecorder {
     const prevDependencies = Object.getPrototypeOf(this.#dependenciesIds);
     if (prevDependencies !== null) {
       this.#dependenciesIds = prevDependencies;
+      this.#transformDepsIds = Object.getPrototypeOf(this.#transformDepsIds);
     }
     this.#ctx.restore();
   }
@@ -210,9 +238,16 @@ export class CanvasRecorder {
         });
       }
 
-      const passThrough = ["transform", "translate", "rotate", "scale"];
-      for (const name of passThrough) {
+      for (const name of relativeTransformMethods) {
         CanvasRecorder.prototype[name] = function (...args) {
+          this.#transformDepsIds.push(this.#nextCommandsId);
+          this.#ctx[name](...args);
+        };
+      }
+      for (const name of ["setTransform", "resetTransform"]) {
+        CanvasRecorder.prototype[name] = function (...args) {
+          this.#transformDepsIds.length = 0;
+          this.#transformDepsIds.push(this.#nextCommandsId);
           this.#ctx[name](...args);
         };
       }
@@ -233,7 +268,10 @@ export class CanvasRecorder {
         }
 
         if (Object.hasOwn(CanvasRecorder.prototype, name)) {
-          if (Object.hasOwn(depsOfMethods, name)) {
+          if (
+            Object.hasOwn(depsOfMethods, name) ||
+            transformedMethods.includes(name)
+          ) {
             throw new Error(
               `Internal error: CanvasRecorder#${name} already defined`
             );
@@ -262,11 +300,15 @@ export class CanvasRecorder {
 
         const ignoreBox = /^(?:get|set|is)[A-Z]/.test(name);
         const deps = depsOfMethods[name];
+        const affectedByTransform = transformedMethods.includes(name);
 
         CanvasRecorder.prototype[name] = function (...args) {
           if (!ignoreBox) {
             // console.warn(`Untracked call to ${name}`);
             this.#unknown();
+          }
+          if (affectedByTransform) {
+            this.#registerTransformDependencies();
           }
           if (deps) {
             this.#registerDependencies(deps);
