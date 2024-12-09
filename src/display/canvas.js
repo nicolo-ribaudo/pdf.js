@@ -3285,16 +3285,11 @@ class CanvasGraphics {
     }
 
     if (ctx instanceof CanvasRecorder) {
-      if (clipBox) {
-        ctx.currentGroup.minX = clipBox[0];
-        ctx.currentGroup.maxX = clipBox[2];
-        ctx.currentGroup.minY = clipBox[1];
-        ctx.currentGroup.maxY = clipBox[3];
-      } else {
-        // TODO: Actually calculate the bounding box.
-        ctx.currentGroup.minX = ctx.currentGroup.minY = 0;
-        ctx.currentGroup.maxX = ctx.currentGroup.maxY = Infinity;
-      }
+      const cb = clipBox ?? this.current.clipBox;
+      ctx.currentGroup.minX = cb[0];
+      ctx.currentGroup.maxX = cb[2];
+      ctx.currentGroup.minY = cb[1];
+      ctx.currentGroup.maxY = cb[3];
     }
     const groupData = CanvasRecorder.endGroupRecording(
       ctx,
