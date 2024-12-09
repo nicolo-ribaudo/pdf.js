@@ -1642,6 +1642,13 @@ class CanvasGraphics {
   }
 
   save(opIdx) {
+    debugger;
+    CanvasRecorder.startGroupRecording(this.ctx, {
+      type: "save",
+      startIdx: opIdx,
+      endIdx: -1,
+    });
+
     if (this.inSMaskMode) {
       // SMask mode may be turned on/off causing us to lose graphics state.
       // Copy the temporary canvas state to the main(suspended) canvas to keep
@@ -1659,6 +1666,7 @@ class CanvasGraphics {
   }
 
   restore(opIdx) {
+    debugger;
     if (this.stateStack.length === 0 && this.inSMaskMode) {
       this.endSMaskMode();
     }
@@ -1673,6 +1681,11 @@ class CanvasGraphics {
         this.ctx.restore();
       }
       this.checkSMaskState();
+
+      const groupData = CanvasRecorder.endGroupRecording(this.ctx, "save");
+      if (groupData) {
+        groupData.endIdx = opIdx;
+      }
 
       // Ensure that the clipping path is reset (fixes issue6413.pdf).
       this.pendingClip = null;
@@ -1995,6 +2008,7 @@ class CanvasGraphics {
 
     const groupData = CanvasRecorder.endGroupRecording(
       this.ctx,
+      "text",
       this.current.takeDependencies()
     );
     if (groupData) {
@@ -3044,7 +3058,11 @@ class CanvasGraphics {
 
     this.paintInlineImageXObject(opIdx, imgData);
 
-    CanvasRecorder.endGroupRecording(this.ctx, this.current.takeDependencies());
+    CanvasRecorder.endGroupRecording(
+      this.ctx,
+      "image",
+      this.current.takeDependencies()
+    );
   }
 
   paintImageXObjectRepeat(opIdx, objId, scaleX, scaleY, positions) {
@@ -3293,6 +3311,7 @@ class CanvasGraphics {
     }
     const groupData = CanvasRecorder.endGroupRecording(
       ctx,
+      "path",
       this.current.takeDependencies()
     );
     if (groupData) {

@@ -61,10 +61,10 @@ export class CanvasRecorder {
     return #startGroup in ctx ? ctx.#startGroup(data) : null;
   }
 
-  static endGroupRecording(ctx, extraDependencies) {
+  static endGroupRecording(ctx, type, extraDependencies) {
     if (#endGroup in ctx) {
       this.addExtraDependencies(ctx, extraDependencies);
-      return ctx.#endGroup();
+      return ctx.#endGroup(type);
     }
     return null;
   }
@@ -99,8 +99,15 @@ export class CanvasRecorder {
     return this.#currentGroup;
   }
 
-  #endGroup() {
+  #endGroup(type) {
+    debugger;
     const group = this.#groupsStack.pop();
+    if (group.data.type !== type) {
+      this.#groupsStack.push(group);
+
+      // TODO: Warn?
+      return null;
+    }
     this.#currentGroup.maxX = Math.max(this.#currentGroup.maxX, group.maxX);
     this.#currentGroup.minX = Math.min(this.#currentGroup.minX, group.minX);
     this.#currentGroup.maxY = Math.max(this.#currentGroup.maxY, group.maxY);
@@ -305,7 +312,10 @@ export class CanvasRecorder {
           continue;
         }
 
-        const ignoreBox = /^(?:get|set|is)[A-Z]/.test(name);
+        const ignoreBox =
+          /^(?:get|set|is)[A-Z]/.test(name) ||
+          name === "beginPath" ||
+          name === "closePath";
         const deps = depsOfMethods[name];
         const affectedByTransform = transformedMethods.includes(name);
 
