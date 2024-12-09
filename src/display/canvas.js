@@ -3303,19 +3303,26 @@ class CanvasGraphics {
     }
 
     if (ctx instanceof CanvasRecorder) {
-      const cb = clipBox ?? this.current.clipBox;
-      ctx.currentGroup.minX = cb[0];
-      ctx.currentGroup.maxX = cb[2];
-      ctx.currentGroup.minY = cb[1];
-      ctx.currentGroup.maxY = cb[3];
-    }
-    const groupData = CanvasRecorder.endGroupRecording(
-      ctx,
-      "path",
-      this.current.takeDependencies()
-    );
-    if (groupData) {
-      groupData.endIdx = opIdx;
+      if (clipBox) {
+        ctx.currentGroup.minX = clipBox[0];
+        ctx.currentGroup.maxX = clipBox[2];
+        ctx.currentGroup.minY = clipBox[1];
+        ctx.currentGroup.maxY = clipBox[3];
+
+        const groupData = CanvasRecorder.endGroupRecording(
+          ctx,
+          "path",
+          this.current.takeDependencies()
+        );
+        if (groupData) {
+          groupData.endIdx = opIdx;
+        }
+      } else {
+        // We are actually just defining a clip area, which has no visual
+        // effects. Its path is already considered for the bbox of its contents,
+        // that are actually clipped and thus get a potentially clipped bbox.
+        CanvasRecorder.discardGroupRecording(ctx, "path");
+      }
     }
 
     this.current.startNewPathAndClipBox(this.current.clipBox);

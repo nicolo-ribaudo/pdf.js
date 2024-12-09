@@ -61,6 +61,10 @@ export class CanvasRecorder {
     return #startGroup in ctx ? ctx.#startGroup(data) : null;
   }
 
+  static discardGroupRecording(ctx, type) {
+    return #discardGroup in ctx ? ctx.#discardGroup(type) : null;
+  }
+
   static endGroupRecording(ctx, type, extraDependencies) {
     if (#endGroup in ctx) {
       this.addExtraDependencies(ctx, extraDependencies);
@@ -97,6 +101,17 @@ export class CanvasRecorder {
       data,
     });
     return this.#currentGroup;
+  }
+
+  #discardGroup(type) {
+    const group = this.#groupsStack.pop();
+    if (group.data.type !== type) {
+      this.#groupsStack.push(group);
+      // TODO: Warn?
+      return null;
+    }
+
+    return group.data;
   }
 
   #endGroup(type) {
