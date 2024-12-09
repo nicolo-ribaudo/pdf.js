@@ -1,4 +1,10 @@
-const strokeDependencies = ["lineCap", "lineJoin", "lineWidth", "strokeStyle"];
+const strokeDependencies = [
+  "lineCap",
+  "lineJoin",
+  "lineWidth",
+  "miterLimit",
+  "strokeStyle",
+];
 const fillDependencies = ["fillStyle"];
 const relativeTransformMethods = ["transform", "translate", "rotate", "scale"];
 const transformedMethods = [
@@ -222,6 +228,7 @@ export class CanvasRecorder {
         "lineCap",
         "lineJoin",
         "lineWidth",
+        "miterLimit",
         "fillStyle",
         "strokeStyle",
       ];
