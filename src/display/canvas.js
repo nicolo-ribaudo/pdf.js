@@ -1642,7 +1642,6 @@ class CanvasGraphics {
   }
 
   save(opIdx) {
-    debugger;
     CanvasRecorder.startGroupRecording(this.ctx, {
       type: "save",
       startIdx: opIdx,
@@ -1666,7 +1665,6 @@ class CanvasGraphics {
   }
 
   restore(opIdx) {
-    debugger;
     if (this.stateStack.length === 0 && this.inSMaskMode) {
       this.endSMaskMode();
     }

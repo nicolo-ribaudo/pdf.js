@@ -115,7 +115,6 @@ export class CanvasRecorder {
   }
 
   #endGroup(type) {
-    debugger;
     const group = this.#groupsStack.pop();
     if (group.data.type !== type) {
       this.#groupsStack.push(group);
@@ -150,9 +149,9 @@ export class CanvasRecorder {
 
   #unknown() {
     this.#currentGroup.minX = 0;
-    this.#currentGroup.maxX = Infinity;
+    this.#currentGroup.maxX = this.#canvasWidth;
     this.#currentGroup.minY = 0;
-    this.#currentGroup.maxY = Infinity;
+    this.#currentGroup.maxY = this.#canvasHeight;
   }
 
   #registerBox(minX, maxX, minY, maxY) {
