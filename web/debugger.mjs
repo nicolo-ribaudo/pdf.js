@@ -451,13 +451,21 @@ class Stepper {
     }
     boxesContainer.innerHTML = "";
 
-    for (let i = 0; i < groups.length; i++) {
+    const sortedGroups = groups.toSorted((a, b) => {
+      if (a.minY === b.minY) {
+        return a.minX - b.minX;
+      }
+      return a.minY - b.minY;
+    });
+
+    for (let i = 0; i < sortedGroups.length; i++) {
       const el = this.#c("div");
-      el.style.left = `${groups[i].minX * 100}%`;
-      el.style.top = `${groups[i].minY * 100}%`;
-      el.style.width = `${(groups[i].maxX - groups[i].minX) * 100}%`;
-      el.style.height = `${(groups[i].maxY - groups[i].minY) * 100}%`;
+      el.style.left = `${sortedGroups[i].minX * 100}%`;
+      el.style.top = `${sortedGroups[i].minY * 100}%`;
+      el.style.width = `${(sortedGroups[i].maxX - sortedGroups[i].minX) * 100}%`;
+      el.style.height = `${(sortedGroups[i].maxY - sortedGroups[i].minY) * 100}%`;
       el.dataset.groupIdx = i;
+      el.dataset.groupData = JSON.stringify(sortedGroups[i]);
       boxesContainer.append(el);
     }
   }

@@ -1001,7 +1001,8 @@ class CanvasGraphics {
     operatorList,
     executionStartIdx,
     continueCallback,
-    stepper
+    stepper,
+    filter
   ) {
     const argsArray = operatorList.argsArray;
     const fnArray = operatorList.fnArray;
@@ -1024,6 +1025,18 @@ class CanvasGraphics {
     let fnId, fnArgs;
 
     while (true) {
+      if (filter !== undefined) {
+        const jumpIndex = filter(i);
+        if (jumpIndex != null && jumpIndex > i) {
+          // console.log(`Jump from ${i} to ${jumpIndex}.`);
+          if (jumpIndex >= argsArrayLen) {
+            return jumpIndex;
+          }
+          i = jumpIndex;
+          continue;
+        }
+      }
+
       if (stepper !== undefined && i === stepper.nextBreakPoint) {
         stepper.breakIt(i, continueCallback);
         return i;
@@ -1037,10 +1050,15 @@ class CanvasGraphics {
         this.current.setNextCommandsId(i);
         this.opIdx = i;
 
-        if (fnArgs === null) {
-          this[fnId]();
-        } else {
-          this[fnId](...fnArgs);
+        try {
+          if (fnArgs === null) {
+            this[fnId]();
+          } else {
+            this[fnId](...fnArgs);
+          }
+        } catch (e) {
+          e.message = `[op ${i}]: ${e.message}`;
+          throw e;
         }
 
         CanvasRecorder.addExtraDependencies(
@@ -1089,7 +1107,7 @@ class CanvasGraphics {
     }
 
     this.current.activeSMask = null;
-    this.ctx.restore();
+    this.ctx?.restore();
 
     if (this.transparentCanvas) {
       this.ctx = this.compositeCtx;

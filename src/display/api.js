@@ -1466,6 +1466,7 @@ class PDFPageProxy {
     pageColors = null,
     printAnnotationStorage = null,
     isEditing = false,
+    renderingArea = null,
   }) {
     this._stats?.time("Overall");
 
@@ -1514,20 +1515,56 @@ class PDFPageProxy {
       this._pumpOperatorList(intentArgs);
     }
 
-    const recordingContext =
-      this._pdfBug &&
-      globalThis.StepperManager?.enabled &&
-      !this._recordedGroups
-        ? new CanvasRecorder(canvasContext)
-        : null;
+    const recordingContext = !this._recordedGroups
+      ? new CanvasRecorder(canvasContext)
+      : null;
 
     const complete = error => {
       intentState.renderTasks.delete(internalRenderTask);
 
       if (recordingContext) {
-        this._recordedGroups =
-          CanvasRecorder.getFinishedGroups(recordingContext);
-        internalRenderTask.stepper.setOperatorGroups(this._recordedGroups);
+        const groups = CanvasRecorder.getFinishedGroups(recordingContext);
+        internalRenderTask.stepper?.setOperatorGroups(groups);
+
+        const groupsByStart = new Map();
+        for (const group of groups) {
+          if (!("startIdx" in group.data)) continue;
+          const start = group.data.startIdx;
+          const next = group.data.endIdx + 1;
+          groupsByStart.set(start, {
+            nextIdx: next,
+            minX: group.minX,
+            maxX: group.maxX,
+            minY: group.minY,
+            maxY: group.maxY,
+          });
+        }
+        console.log("Set recorded groups", groupsByStart);
+        this._recordedGroups = groupsByStart;
+      } else if (renderingArea) {
+        const ranges = [];
+        let rangeStart = opsIdxs[0];
+        let rangeEnd = opsIdxs[0];
+        for (let i = 1; i < opsIdxs.length; i++) {
+          const idx = opsIdxs[i];
+          if (idx === rangeEnd + 1) {
+            rangeEnd++;
+          } else {
+            ranges.push([rangeStart, rangeEnd]);
+            rangeStart = rangeEnd = idx;
+          }
+        }
+        ranges.push([rangeStart, rangeEnd]);
+
+        console.log(
+          "Only run %c%s%c operations out of %c%s%c",
+          "color: green",
+          opsCount.toLocaleString("en-US"),
+          "color: unset",
+          "color: green",
+          internalRenderTask.operatorList.argsArray.length.toLocaleString("en-US"),
+          "color: unset",
+        );
       }
 
       // Attempt to reduce memory usage during *printing*, by always running
@@ -1558,6 +1595,16 @@ class PDFPageProxy {
       }
     };
 
+    let opsCount = 0;
+    let opsIdxs = [];
+
+    const normalizedRenderingArea = renderingArea && {
+      minX: renderingArea.minX / viewport.width,
+      minY: renderingArea.minY / viewport.height,
+      maxX: (renderingArea.minX + renderingArea.width) / viewport.width,
+      maxY: (renderingArea.minY + renderingArea.height) / viewport.height,
+    };
+
     const internalRenderTask = new InternalRenderTask({
       callback: complete,
       // Only include the required properties, and *not* the entire object.
@@ -1577,6 +1624,30 @@ class PDFPageProxy {
       useRequestAnimationFrame: !intentPrint,
       pdfBug: this._pdfBug,
       pageColors,
+      filter:
+        this._recordedGroups && normalizedRenderingArea
+          ? i => {
+              const group = this._recordedGroups.get(i);
+              if (!group) {
+                opsCount++;
+                opsIdxs.push(i);
+                return i;
+              }
+
+              if (
+                group.minX > normalizedRenderingArea.maxX ||
+                group.maxX < normalizedRenderingArea.minX ||
+                group.minY > normalizedRenderingArea.maxY ||
+                group.maxY < normalizedRenderingArea.minY
+              ) {
+                return group.nextIdx;
+              }
+
+              opsCount++;
+              opsIdxs.push(i);
+              return i;
+            }
+          : undefined,
     });
 
     (intentState.renderTasks ||= new Set()).add(internalRenderTask);
@@ -3372,6 +3443,7 @@ class InternalRenderTask {
     useRequestAnimationFrame = false,
     pdfBug = false,
     pageColors = null,
+    filter = undefined,
   }) {
     this.callback = callback;
     this.params = params;
@@ -3400,6 +3472,8 @@ class InternalRenderTask {
     this._scheduleNextBound = this._scheduleNext.bind(this);
     this._nextBound = this._next.bind(this);
     this._canvas = params.canvasContext.canvas;
+
+    this._filter = filter;
   }
 
   get completed() {
@@ -3515,9 +3589,10 @@ class InternalRenderTask {
       this.operatorList,
       this.operatorListIdx,
       this._continueBound,
-      this.stepper
+      this.stepper,
+      this._filter
     );
-    if (this.operatorListIdx === this.operatorList.argsArray.length) {
+    if (this.operatorListIdx >= this.operatorList.argsArray.length) {
       this.running = false;
       if (this.operatorList.lastChunk) {
         this.gfx.endDrawing();

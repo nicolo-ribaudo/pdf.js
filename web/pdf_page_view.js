@@ -61,13 +61,17 @@ class Recorder {
     this.running = false;
   }
 
+  #log(str) {
+    console.log(str);
+  }
+
   start() {
     if (this.running) {
       console.warn(`Start ${this.kind} recorder while running`);
       return;
     }
 
-    console.log(`Start rendering ${this.kind}`);
+    this.#log(`Start rendering ${this.kind}`);
     this.currentStartTime = this.startTime = performance.now();
     this.accumulatedTime = 0;
     this.running = true;
@@ -79,7 +83,7 @@ class Recorder {
       return;
     }
 
-    console.log(`Pause rendering ${this.kind}`);
+    this.#log(`Pause rendering ${this.kind}`);
     this.accumulatedTime += performance.now() - this.currentStartTime;
     this.running = false;
   }
@@ -90,7 +94,7 @@ class Recorder {
       return;
     }
 
-    console.log(`Resume rendering ${this.kind}`);
+    this.#log(`Resume rendering ${this.kind}`);
     this.currentStartTime = performance.now();
     this.running = true;
   }
@@ -105,7 +109,7 @@ class Recorder {
     const totalTime = performance.now() - this.startTime;
     this.running = false;
 
-    console.log(
+    this.#log(
       `Finish renderig ${this.kind} (self: ${this.accumulatedTime}ms, total: ${totalTime}ms)`
     );
   }
@@ -118,7 +122,7 @@ class Recorder {
 
     const totalTime = performance.now() - this.startTime;
 
-    console.log(
+    this.#log(
       `Cancel renderig ${this.kind} (self: ${this.accumulatedTime}ms, total: ${totalTime}ms)`
     );
   }
@@ -1210,15 +1214,6 @@ class PDFPageView extends PDFPageViewBase {
       } else {
         this.#hasRestrictedScaling = false;
       }
-      console.log({
-        hasRestrictedScaling: this.#hasRestrictedScaling,
-        maxCanvasPixels: this.maxCanvasPixels.toLocaleString(),
-        pixelsInViewport: Math.round(pixelsInViewport).toLocaleString(),
-        outputScaleSx: outputScale.sx,
-        outputScaleSy: outputScale.sy,
-        maxScale,
-        ratio: window.devicePixelRatio,
-      });
     }
     const sfx = approximateFraction(outputScale.sx);
     const sfy = approximateFraction(outputScale.sy);
@@ -1582,6 +1577,7 @@ class PDFPageDetailView extends PDFPageViewBase {
         transform,
         viewport,
         pageColors: this.pageColors,
+        renderingArea: area
       },
       prevCanvas,
       () => {
