@@ -43,6 +43,7 @@ import {
   isDataScheme,
   isValidFetchUrl,
   PageViewport,
+  PDFObjects,
   RenderingCancelledException,
   StatTimer,
 } from "./display_utils.js";
@@ -54,7 +55,6 @@ import {
   NodeStandardFontDataFactory,
   NodeWasmFactory,
 } from "display-node_utils";
-import { CanvasGraphics } from "./canvas.js";
 import { DOMCanvasFactory } from "./canvas_factory.js";
 import { DOMCMapReaderFactory } from "display-cmap_reader_factory";
 import { DOMFilterFactory } from "./filter_factory.js";
@@ -3152,115 +3152,6 @@ class WorkerTransport {
   }
 }
 
-const INITIAL_DATA = Symbol("INITIAL_DATA");
-
-/**
- * A PDF document and page is built of many objects. E.g. there are objects for
- * fonts, images, rendering code, etc. These objects may get processed inside of
- * a worker. This class implements some basic methods to manage these objects.
- */
-class PDFObjects {
-  #objs = Object.create(null);
-
-  /**
-   * Ensures there is an object defined for `objId`.
-   *
-   * @param {string} objId
-   * @returns {Object}
-   */
-  #ensureObj(objId) {
-    return (this.#objs[objId] ||= {
-      ...Promise.withResolvers(),
-      data: INITIAL_DATA,
-    });
-  }
-
-  /**
-   * If called *without* callback, this returns the data of `objId` but the
-   * object needs to be resolved. If it isn't, this method throws.
-   *
-   * If called *with* a callback, the callback is called with the data of the
-   * object once the object is resolved. That means, if you call this method
-   * and the object is already resolved, the callback gets called right away.
-   *
-   * @param {string} objId
-   * @param {function} [callback]
-   * @returns {any}
-   */
-  get(objId, callback = null) {
-    // If there is a callback, then the get can be async and the object is
-    // not required to be resolved right now.
-    if (callback) {
-      const obj = this.#ensureObj(objId);
-      obj.promise.then(() => callback(obj.data));
-      return null;
-    }
-    // If there isn't a callback, the user expects to get the resolved data
-    // directly.
-    const obj = this.#objs[objId];
-    // If there isn't an object yet or the object isn't resolved, then the
-    // data isn't ready yet!
-    if (!obj || obj.data === INITIAL_DATA) {
-      throw new Error(`Requesting object that isn't resolved yet ${objId}.`);
-    }
-    return obj.data;
-  }
-
-  /**
-   * @param {string} objId
-   * @returns {boolean}
-   */
-  has(objId) {
-    const obj = this.#objs[objId];
-    return !!obj && obj.data !== INITIAL_DATA;
-  }
-
-  /**
-   * @param {string} objId
-   * @returns {boolean}
-   */
-  delete(objId) {
-    const obj = this.#objs[objId];
-    if (!obj || obj.data === INITIAL_DATA) {
-      // Only allow removing the object *after* it's been resolved.
-      return false;
-    }
-    delete this.#objs[objId];
-    return true;
-  }
-
-  /**
-   * Resolves the object `objId` with optional `data`.
-   *
-   * @param {string} objId
-   * @param {any} [data]
-   */
-  resolve(objId, data = null) {
-    const obj = this.#ensureObj(objId);
-    obj.data = data;
-    obj.resolve();
-  }
-
-  clear() {
-    for (const objId in this.#objs) {
-      const { data } = this.#objs[objId];
-      data?.bitmap?.close(); // Release any `ImageBitmap` data.
-    }
-    this.#objs = Object.create(null);
-  }
-
-  *[Symbol.iterator]() {
-    for (const objId in this.#objs) {
-      const { data } = this.#objs[objId];
-
-      if (data === INITIAL_DATA) {
-        continue;
-      }
-      yield [objId, data];
-    }
-  }
-}
-
 /**
  * Allows controlling of the rendering tasks.
  */
@@ -3382,6 +3273,10 @@ class InternalRenderTask {
     this._scheduleNextBound = this._scheduleNext.bind(this);
     this._nextBound = this._next.bind(this);
     this._canvas = params.canvasContext.canvas;
+    this._worker = new Worker("../src/display/worker.js", {
+      type: "module",
+    });
+    this._worker.onmessage = this._handleWorkerMessage.bind(this);
   }
 
   get completed() {
@@ -3413,22 +3308,35 @@ class InternalRenderTask {
     }
     const { canvasContext, viewport, transform, background } = this.params;
 
-    this.gfx = new CanvasGraphics(
-      canvasContext,
-      this.commonObjs,
-      this.objs,
-      this.canvasFactory,
-      this.filterFactory,
-      { optionalContentConfig },
-      this.annotationCanvasMap,
-      this.pageColors
+    const offscreen = new OffscreenCanvas(
+      canvasContext.canvas.width,
+      canvasContext.canvas.height
     );
-    this.gfx.beginDrawing({
-      transform,
-      viewport,
-      transparency,
-      background,
-    });
+    this._worker.postMessage(
+      {
+        type: "init",
+        canvas: offscreen,
+        objs: this.objs.toJSON(),
+        commonObjs: this.commonObjs.toJSON(),
+        drawingParams: {
+          viewport,
+          transform,
+          transparency,
+          background,
+        },
+        optionalContentConfig,
+        map: this.annotationCanvasMap,
+        colors: this.pageColors,
+        // constructorParams: [
+        //   null,
+        //   null,
+        //   { optionalContentConfig },
+        //   this.annotationCanvasMap,
+        //   this.pageColors,
+        // // ],
+      },
+      [offscreen]
+    );
     this.operatorListIdx = 0;
     this.graphicsReady = true;
     this.graphicsReadyCallback?.();
@@ -3437,7 +3345,9 @@ class InternalRenderTask {
   cancel(error = null, extraDelay = 0) {
     this.running = false;
     this.cancelled = true;
-    this.gfx?.endDrawing();
+    this._worker.postMessage({
+      type: "end",
+    });
     if (this.#rAF) {
       window.cancelAnimationFrame(this.#rAF);
       this.#rAF = null;
@@ -3493,20 +3403,34 @@ class InternalRenderTask {
     if (this.cancelled) {
       return;
     }
-    this.operatorListIdx = this.gfx.executeOperatorList(
-      this.operatorList,
-      this.operatorListIdx,
-      this._continueBound,
-      this.stepper
-    );
+    this._worker.postMessage({
+      type: "render",
+      renderParams: [
+        this.operatorList,
+        this.operatorListIdx,
+        // this._continueBound,
+        null,
+        this.stepper,
+      ],
+    });
     if (this.operatorListIdx === this.operatorList.argsArray.length) {
       this.running = false;
       if (this.operatorList.lastChunk) {
-        this.gfx.endDrawing();
+        this._worker.postMessage({
+          type: "end",
+        });
         InternalRenderTask.#canvasInUse.delete(this._canvas);
 
         this.callback();
       }
+    }
+  }
+
+  _handleWorkerMessage(event) {
+    const { type, bitmap } = event.data;
+    if (type === "renderComplete") {
+      this.params.canvasContext.drawImage(bitmap, 0, 0);
+      bitmap.close();
     }
   }
 }
