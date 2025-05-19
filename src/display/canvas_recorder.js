@@ -24,7 +24,7 @@ TODO (dependencies):
 */
 
 /** @implements {CanvasRenderingContext2D} */
-export class CanvasRecorder {
+class CanvasRecorder {
   /** @type {CanvasRenderingContext2D} */
   #ctx;
 
@@ -241,7 +241,7 @@ export class CanvasRecorder {
   }
 
   setLineDash(segments) {
-    this.#dependenciesIds["setLineDash"] = this.#nextCommandsId;
+    this.#dependenciesIds.setLineDash = this.#nextCommandsId;
     this.#ctx.setLineDash(segments);
   }
 
@@ -344,3 +344,5 @@ export class CanvasRecorder {
     }
   }
 }
+
+export { CanvasRecorder };

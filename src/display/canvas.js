@@ -848,7 +848,8 @@ class CanvasGraphics {
       }
 
       fnId = fnArray[i];
-      fnArgs = argsArray[i];
+      // TODO: There is a `undefined` coming from somewhere.
+      fnArgs = argsArray[i] ?? null;
 
       if (fnId !== OPS.dependency) {
         CanvasRecorder.setNextCommandsId(this.ctx, i);
@@ -1547,7 +1548,7 @@ class CanvasGraphics {
       getCurrentTransform(this.ctx),
       this.current.minMax
     );
-    this[op](path);
+    this[op](opIdx, path);
 
     this._pathStartIdx = opIdx;
   }
