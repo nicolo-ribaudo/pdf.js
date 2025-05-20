@@ -211,6 +211,7 @@ class CachedCanvases {
       canvasEntry = this.cache[id];
       this.canvasFactory.reset(canvasEntry, width, height);
     } else {
+      console.log(this.canvasFactory);
       canvasEntry = this.canvasFactory.create(width, height);
       this.cache[id] = canvasEntry;
     }
@@ -648,7 +649,7 @@ class CanvasGraphics {
     objs,
     canvasFactory,
     filterFactory,
-    { optionalContentConfig, markedContentStack = null },
+    { isVisible, markedContentStack = null },
     annotationCanvasMap,
     pageColors
   ) {
@@ -678,7 +679,8 @@ class CanvasGraphics {
     this.suspendedCtx = null;
     this.contentVisible = true;
     this.markedContentStack = markedContentStack || [];
-    this.optionalContentConfig = optionalContentConfig;
+    // this.optionalContentConfig = optionalContentConfig;
+    this.isVisible = isVisible;
     this.cachedCanvases = new CachedCanvases(this.canvasFactory);
     this.cachedPatterns = new Map();
     this.annotationCanvasMap = annotationCanvasMap;
@@ -2166,7 +2168,8 @@ class CanvasGraphics {
             this.canvasFactory,
             this.filterFactory,
             {
-              optionalContentConfig: this.optionalContentConfig,
+              // optionalContentConfig: this.optionalContentConfig,
+              isVisible: this.isVisible,
               markedContentStack: this.markedContentStack,
             }
           ),
@@ -2879,7 +2882,7 @@ class CanvasGraphics {
   beginMarkedContentProps(tag, properties) {
     if (tag === "OC") {
       this.markedContentStack.push({
-        visible: this.optionalContentConfig.isVisible(properties),
+        visible: this.isVisible(properties),
       });
     } else {
       this.markedContentStack.push({

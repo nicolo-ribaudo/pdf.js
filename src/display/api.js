@@ -1614,6 +1614,7 @@ class PDFPageProxy {
       useRequestAnimationFrame: !intentPrint,
       pdfBug: this._pdfBug,
       pageColors,
+      displayWorker: this._transport.displayWorker,
     });
 
     (intentState.renderTasks ||= new Set()).add(internalRenderTask);
@@ -2449,7 +2450,6 @@ class WorkerTransport {
   constructor(messageHandler, loadingTask, networkStream, params, factory) {
     this.messageHandler = messageHandler;
     this.loadingTask = loadingTask;
-    this.commonObjs = new PDFObjects();
     this.fontLoader = new FontLoader({
       ownerDocument: params.ownerDocument,
       styleElement: params.styleElement,
@@ -2462,6 +2462,11 @@ class WorkerTransport {
     this.cMapReaderFactory = factory.cMapReaderFactory;
     this.standardFontDataFactory = factory.standardFontDataFactory;
     this.wasmFactory = factory.wasmFactory;
+
+    this.commonObjs = new PDFObjects();
+    this.displayWorker = new Worker("../src/display/worker.js", {
+      type: "module",
+    });
 
     this.destroyed = false;
     this.destroyCapability = null;
@@ -2812,6 +2817,12 @@ class WorkerTransport {
     });
 
     messageHandler.on("commonobj", ([id, type, exportedData]) => {
+      this.displayWorker.postMessage({
+        type: "commonobj",
+        id,
+        objType: type,
+        exportedData,
+      });
       if (this.destroyed) {
         return null; // Ignore any pending requests if the worker was terminated.
       }
@@ -2880,6 +2891,13 @@ class WorkerTransport {
     });
 
     messageHandler.on("obj", ([id, pageIndex, type, imageData]) => {
+      this.displayWorker.postMessage({
+        type: "obj",
+        id,
+        pageIndex,
+        objType: type,
+        exportedData: imageData,
+      });
       if (this.destroyed) {
         // Ignore any pending requests if the worker was terminated.
         return;
@@ -2992,7 +3010,8 @@ class WorkerTransport {
           pageIndex,
           pageInfo,
           this,
-          this._params.pdfBug
+          this._params.pdfBug,
+          this.displayWorker
         );
         this.#pageCache.set(pageIndex, page);
         return page;
@@ -3245,6 +3264,7 @@ class InternalRenderTask {
     useRequestAnimationFrame = false,
     pdfBug = false,
     pageColors = null,
+    displayWorker,
   }) {
     this.callback = callback;
     this.params = params;
@@ -3273,10 +3293,7 @@ class InternalRenderTask {
     this._scheduleNextBound = this._scheduleNext.bind(this);
     this._nextBound = this._next.bind(this);
     this._canvas = params.canvasContext.canvas;
-    this._worker = new Worker("../src/display/worker.js", {
-      type: "module",
-    });
-    this._worker.onmessage = this._handleWorkerMessage.bind(this);
+    this.displayWorker = displayWorker;
   }
 
   get completed() {
@@ -3306,36 +3323,33 @@ class InternalRenderTask {
       this.stepper.init(this.operatorList);
       this.stepper.nextBreakPoint = this.stepper.getNextBreakPoint();
     }
-    const { canvasContext, viewport, transform, background } = this.params;
+    const { viewport, transform, background } = this.params;
 
+    // TODO: Rework canvas/context handling to draw on the same canvas.
     const offscreen = new OffscreenCanvas(
-      canvasContext.canvas.width,
-      canvasContext.canvas.height
+      this._canvas.width,
+      this._canvas.height
     );
-    this._worker.postMessage(
+    this.displayWorker.postMessage(
       {
         type: "init",
         canvas: offscreen,
-        objs: this.objs.toJSON(),
-        commonObjs: this.commonObjs.toJSON(),
         drawingParams: {
           viewport,
           transform,
           transparency,
           background,
         },
-        optionalContentConfig,
+        pageIndex: this._pageIndex,
         map: this.annotationCanvasMap,
         colors: this.pageColors,
-        // constructorParams: [
-        //   null,
-        //   null,
-        //   { optionalContentConfig },
-        //   this.annotationCanvasMap,
-        //   this.pageColors,
-        // // ],
+        enableHWA: this.canvasFactory.enableHWA,
       },
       [offscreen]
+    );
+    this.displayWorker.onmessage = this._handleWorkerMessage.bind(
+      this,
+      optionalContentConfig
     );
     this.operatorListIdx = 0;
     this.graphicsReady = true;
@@ -3345,8 +3359,9 @@ class InternalRenderTask {
   cancel(error = null, extraDelay = 0) {
     this.running = false;
     this.cancelled = true;
-    this._worker.postMessage({
+    this.displayWorker.postMessage({
       type: "end",
+      pageIndex: this._pageIndex,
     });
     if (this.#rAF) {
       window.cancelAnimationFrame(this.#rAF);
@@ -3403,34 +3418,53 @@ class InternalRenderTask {
     if (this.cancelled) {
       return;
     }
-    this._worker.postMessage({
+    this.displayWorker.postMessage({
       type: "render",
-      renderParams: [
-        this.operatorList,
-        this.operatorListIdx,
-        // this._continueBound,
-        null,
-        this.stepper,
-      ],
+      operatorList: this.operatorList,
+      operatorListIdx: this.operatorListIdx,
+      stepper: this.stepper,
+      pageIndex: this._pageIndex,
     });
-    if (this.operatorListIdx === this.operatorList.argsArray.length) {
-      this.running = false;
-      if (this.operatorList.lastChunk) {
-        this._worker.postMessage({
-          type: "end",
-        });
-        InternalRenderTask.#canvasInUse.delete(this._canvas);
-
-        this.callback();
-      }
-    }
   }
 
-  _handleWorkerMessage(event) {
-    const { type, bitmap } = event.data;
-    if (type === "renderComplete") {
-      this.params.canvasContext.drawImage(bitmap, 0, 0);
-      bitmap.close();
+  _handleWorkerMessage(optionalContentConfig, event) {
+    // console.log("WORKER MESSAGE", event.data);
+    const { type, bitmap, signal } = event.data;
+    switch (type) {
+      case "renderComplete":
+        const { fOperatorListIdx } = event.data;
+        this.operatorListIdx = fOperatorListIdx;
+        if (this.operatorListIdx === this.operatorList.argsArray.length) {
+          this.running = false;
+          if (this.operatorList.lastChunk) {
+            this.displayWorker.postMessage({
+              type: "end",
+              pageIndex: this._pageIndex,
+            });
+            InternalRenderTask.#canvasInUse.delete(this._canvas);
+
+            this.callback();
+          }
+        }
+        // console.log("HERE MAGIC HAPPENS", bitmap);
+        // console.log(this.params.canvasContext);
+        this.params.canvasContext.drawImage(bitmap, 0, 0);
+        bitmap.close();
+        break;
+      case "isVisible":
+        const { group } = event.data;
+        Atomics.store(
+          signal,
+          0,
+          optionalContentConfig.isVisible(group) ? 1 : -1
+        );
+        Atomics.notify(signal, 0);
+        break;
+      case "continue":
+        this._continueBound(this);
+        Atomics.store(signal, 0, 1);
+        Atomics.notify(signal, 0);
+        break;
     }
   }
 }
