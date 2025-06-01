@@ -221,6 +221,7 @@ class PartialEvaluator {
   constructor({
     xref,
     handler,
+    rendererHandler,
     pageIndex,
     idFactory,
     fontCache,
@@ -233,6 +234,7 @@ class PartialEvaluator {
   }) {
     this.xref = xref;
     this.handler = handler;
+    this.rendererHandler = rendererHandler;
     this.pageIndex = pageIndex;
     this.idFactory = idFactory;
     this.fontCache = fontCache;
@@ -1019,7 +1021,7 @@ class PartialEvaluator {
     }
 
     state.font = translated.font;
-    translated.send(this.handler);
+    translated.send(this.handler, this.rendererHandler);
     return translated.loadedName;
   }
 
@@ -4649,13 +4651,18 @@ class TranslatedFont {
     this.type3Dependencies = font.isType3Font ? new Set() : null;
   }
 
-  send(handler) {
+  send(handler, rendererHandler) {
     if (this.#sent) {
       return;
     }
     this.#sent = true;
 
     handler.send("commonobj", [
+      this.loadedName,
+      "Font",
+      this.font.exportData(),
+    ]);
+    rendererHandler.send("commonobj", [
       this.loadedName,
       "Font",
       this.font.exportData(),

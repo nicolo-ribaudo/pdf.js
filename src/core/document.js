@@ -442,6 +442,7 @@ class Page {
 
   async getOperatorList({
     handler,
+    rendererHandler,
     sink,
     task,
     intent,
@@ -455,6 +456,7 @@ class Page {
     const partialEvaluator = new PartialEvaluator({
       xref: this.xref,
       handler,
+      rendererHandler,
       pageIndex: this.pageIndex,
       idFactory: this._localIdFactory,
       fontCache: this.fontCache,

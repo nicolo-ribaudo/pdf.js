@@ -140,6 +140,7 @@ class WorkerMessageHandler {
     }
     const workerHandlerName = docId + "_worker";
     let handler = new MessageHandler(workerHandlerName, docId, port);
+    let rendererHandler;
 
     function ensureNotTerminated() {
       if (terminated) {
@@ -725,6 +726,7 @@ class WorkerMessageHandler {
         page
           .getOperatorList({
             handler,
+            rendererHandler,
             sink,
             task,
             intent: data.intent,
@@ -846,8 +848,16 @@ class WorkerMessageHandler {
     });
 
     handler.on("Ready", function (data) {
+      console.log(data);
       setupDoc(docParams);
       docParams = null; // we don't need docParams anymore -- saving memory.
+      rendererHandler = new MessageHandler("worker", "renderer", data.port);
+      rendererHandler.send("Ready", null);
+      rendererHandler.on("Ready", function () {
+        console.log("Renderer is ready (FROM WORKER)");
+      });
+      rendererHandler.send("SETUP", null);
+      rendererHandler.on("SETUP", () => console.log("SETUP DONE"));
     });
 
     if (typeof PDFJSDev === "undefined" || PDFJSDev.test("TESTING")) {

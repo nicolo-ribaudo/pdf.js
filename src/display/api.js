@@ -510,16 +510,21 @@ function getDocument(src = {}) {
           throw new Error("Worker was destroyed");
         }
 
+        const workerChannel = new MessageChannel();
         const messageHandler = new MessageHandler(docId, workerId, worker.port);
+        debugger
         const transport = new WorkerTransport(
           messageHandler,
           task,
           networkStream,
           transportParams,
-          transportFactory
+          transportFactory,
+          workerChannel.port1
         );
         task._transport = transport;
-        messageHandler.send("Ready", null);
+        messageHandler.send("Ready", { port: workerChannel.port2 }, [
+          workerChannel.port2,
+        ]);
       });
     })
     .catch(task._capability.reject);
@@ -1615,6 +1620,7 @@ class PDFPageProxy {
       pdfBug: this._pdfBug,
       pageColors,
       displayWorker: this._transport.displayWorker,
+      rendererMessageHandler: this._transport.rendererMessageHandler,
     });
 
     (intentState.renderTasks ||= new Set()).add(internalRenderTask);
@@ -2447,7 +2453,14 @@ class WorkerTransport {
 
   #passwordCapability = null;
 
-  constructor(messageHandler, loadingTask, networkStream, params, factory) {
+  constructor(
+    messageHandler,
+    loadingTask,
+    networkStream,
+    params,
+    factory,
+    port
+  ) {
     this.messageHandler = messageHandler;
     this.loadingTask = loadingTask;
     this.fontLoader = new FontLoader({
@@ -2467,6 +2480,12 @@ class WorkerTransport {
     this.displayWorker = new Worker("../src/display/worker.js", {
       type: "module",
     });
+    this.rendererMessageHandler = new MessageHandler(
+      "main",
+      "renderer",
+      this.displayWorker
+    );
+    this.rendererMessageHandler.send("Ready", { port }, [port]);
 
     this.destroyed = false;
     this.destroyCapability = null;
@@ -3265,6 +3284,7 @@ class InternalRenderTask {
     pdfBug = false,
     pageColors = null,
     displayWorker,
+    rendererMessageHandler,
   }) {
     this.callback = callback;
     this.params = params;
@@ -3294,6 +3314,10 @@ class InternalRenderTask {
     this._nextBound = this._next.bind(this);
     this._canvas = params.canvasContext.canvas;
     this.displayWorker = displayWorker;
+    this.rendererMessageHandler = rendererMessageHandler;
+    this.rendererMessageHandler.on("ready", () =>
+      console.log("RENDERER IS ready")
+    );
   }
 
   get completed() {

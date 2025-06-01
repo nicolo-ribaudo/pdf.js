@@ -1,11 +1,49 @@
 import { assert, warn } from "../shared/util.js";
+import { FontFaceObject, FontLoader } from "./font_loader.js";
 import { CanvasGraphics } from "./canvas.js";
-import { FontFaceObject } from "./font_loader.js";
+import { MessageHandler } from "../shared/message_handler.js";
 import { OffscreenCanvasFactory } from "./canvas_factory.js";
 import { PDFObjects } from "./display_utils.js";
 
 const commonObjs = new PDFObjects();
 const objs = new Map();
+
+const fontLoader = new FontLoader({
+  ownerDocument: self,
+});
+
+class RendererMessageHandler {
+  static {
+    this.initializeFromPort(self);
+  }
+
+  static initializeFromPort(port) {
+    const mainHandler = new MessageHandler("renderer", "main", port);
+    let workerHandler;
+
+    function setupWorkerHandler() {
+      workerHandler.on("commonobj", ({ id, type, exportedData }) => {
+        console.log("DIRECTLY GOT A COMMON OBJ", id, type, exportedData);
+        handleCommonObj(id, type, exportedData);
+      });
+      workerHandler.on("obj", ({ pageIndex, id, type, exportedData }) => {
+        console.log("DIRECTLY GOT AN OBJ", pageIndex, id, type, exportedData);
+        handleObj(pageIndex, id, type, exportedData);
+      });
+      workerHandler.send("SETUP", null);
+      workerHandler.on("SETUP", () => console.log("SETUP DONE"));
+      workerHandler.send("Ready", null);
+      workerHandler.on("Ready", function () {
+        console.log("Renderer is ready (FROM WORKER)");
+      });
+    }
+
+    mainHandler.on("Ready", ({ port: channelPort }) => {
+      workerHandler = new MessageHandler("renderer", "worker", channelPort);
+      setupWorkerHandler();
+    });
+  }
+}
 
 function handleCommonObj(id, type, exportedData) {
   if (commonObjs.has(id)) {
@@ -27,21 +65,20 @@ function handleCommonObj(id, type, exportedData) {
       // : null;
       const font = new FontFaceObject(exportedData, inspectFont);
 
-      // this.fontLoader
-      //   .bind(font)
-      //   .catch(() => messageHandler.sendWithPromise("FontFallback", { id }))
-      //   .finally(() => {
-      //     if (!font.fontExtraProperties && font.data) {
-      //       // Immediately release the `font.data` property once the font
-      //       // has been attached to the DOM, since it's no longer needed,
-      //       // rather than waiting for a `PDFDocumentProxy.cleanup` call.
-      //       // Since `font.data` could be very large, e.g. in some cases
-      //       // multiple megabytes, this will help reduce memory usage.
-      //       font.data = null;
-      //     }
-      //     commonObjs.resolve(id, font);
-      //   });
-      commonObjs.resolve(id, font);
+      fontLoader
+        .bind(font)
+        .catch(() => self.postMessage("FontFallback", { id }))
+        .finally(() => {
+          if (!font.fontExtraProperties && font.data) {
+            // Immediately release the `font.data` property once the font
+            // has been attached to the DOM, since it's no longer needed,
+            // rather than waiting for a `PDFDocumentProxy.cleanup` call.
+            // Since `font.data` could be very large, e.g. in some cases
+            // multiple megabytes, this will help reduce memory usage.
+            font.data = null;
+          }
+          commonObjs.resolve(id, font);
+        });
       break;
     case "CopyLocalImage":
       const { imageRef } = exportedData;
@@ -102,78 +139,68 @@ class Page {
 
 const pages = new Map();
 
-// TODO: use better/proper message handling
-
-self.onmessage = async function (event) {
-  console.log("WORKER EVENT", event.data);
-  const { type, pageIndex, id, objType, exportedData } = event.data;
-  const page = pages.get(pageIndex);
-  console.log("page", page);
-  switch (type) {
-    case "init":
-      assert(page === undefined, "Page already initialized");
-      const {
-        canvas,
-        drawingParams: { transform, viewport, background, transparency },
-        map,
-        colors,
-        enableHWA,
-      } = event.data;
-      const ctx = canvas.getContext("2d");
-      let pageObjs = objs.get(pageIndex);
-      if (!pageObjs) {
-        pageObjs = new PDFObjects();
-        objs.set(pageIndex, pageObjs);
-      }
-      const gfx = new CanvasGraphics(
-        ctx,
-        commonObjs,
-        pageObjs,
-        new OffscreenCanvasFactory({ enableHWA }),
-        null,
-        { isVisible },
-        map,
-        colors
-      );
-      gfx.beginDrawing({
-        transform,
-        viewport,
-        transparency,
-        background,
-      });
-      pages.set(pageIndex, new Page(canvas, gfx));
-      break;
-    case "render":
-      assert(page !== undefined, "Page not initialized");
-      const { canvas: rCanvas, gfx: rGfx } = page;
-      const { operatorList, operatorListIdx, stepper } = event.data;
-      const fOperatorListIdx = rGfx.executeOperatorList(
-        operatorList,
-        operatorListIdx,
-        continueFn,
-        stepper
-      );
-      const bitmap = await rCanvas.transferToImageBitmap();
-      console.log("bitmap", bitmap);
-      self.postMessage({ type: "renderComplete", bitmap, fOperatorListIdx }, [
-        bitmap,
-      ]);
-      break;
-    case "commonobj":
-      handleCommonObj(id, objType, exportedData);
-      // console.log(commonObjs);
-      break;
-    case "obj":
-      handleObj(pageIndex, id, objType, exportedData);
-      console.log(objs);
-      break;
-    case "end":
-      assert(page !== undefined, "Page not initialized");
-      const { gfx: eGfx } = page;
-      eGfx.endDrawing();
-      break;
-  }
-};
+// self.onmessage = async function (event) {
+//   console.log("WORKER EVENT", event.data);
+//   const { type, pageIndex, id, objType, exportedData } = event.data;
+//   const page = pages.get(pageIndex);
+//   console.log("page", page);
+//   switch (type) {
+//     case "init":
+//       assert(page === undefined, "Page already initialized");
+//       const {
+//         canvas,
+//         drawingParams: { transform, viewport, background, transparency },
+//         map,
+//         colors,
+//         enableHWA,
+//       } = event.data;
+//       const ctx = canvas.getContext("2d");
+//       let pageObjs = objs.get(pageIndex);
+//       if (!pageObjs) {
+//         pageObjs = new PDFObjects();
+//         objs.set(pageIndex, pageObjs);
+//       }
+//       const gfx = new CanvasGraphics(
+//         ctx,
+//         commonObjs,
+//         pageObjs,
+//         new OffscreenCanvasFactory({ enableHWA }),
+//         null,
+//         { isVisible },
+//         map,
+//         colors
+//       );
+//       gfx.beginDrawing({
+//         transform,
+//         viewport,
+//         transparency,
+//         background,
+//       });
+//       pages.set(pageIndex, new Page(canvas, gfx));
+//       break;
+//     case "render":
+//       assert(page !== undefined, "Page not initialized");
+//       const { canvas: rCanvas, gfx: rGfx } = page;
+//       const { operatorList, operatorListIdx, stepper } = event.data;
+//       const fOperatorListIdx = rGfx.executeOperatorList(
+//         operatorList,
+//         operatorListIdx,
+//         continueFn,
+//         stepper
+//       );
+//       const bitmap = await rCanvas.transferToImageBitmap();
+//       console.log("bitmap", bitmap);
+//       self.postMessage({ type: "renderComplete", bitmap, fOperatorListIdx }, [
+//         bitmap,
+//       ]);
+//       break;
+//     case "end":
+//       assert(page !== undefined, "Page not initialized");
+//       const { gfx: eGfx } = page;
+//       eGfx.endDrawing();
+//       break;
+//   }
+// };
 
 // TODO: this is a semi hack that blocks the worker for this operation. Ideally
 // we should use a promise and resolve it when the main thread sends the

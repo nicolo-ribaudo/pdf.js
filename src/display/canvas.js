@@ -211,7 +211,6 @@ class CachedCanvases {
       canvasEntry = this.cache[id];
       this.canvasFactory.reset(canvasEntry, width, height);
     } else {
-      console.log(this.canvasFactory);
       canvasEntry = this.canvasFactory.create(width, height);
       this.cache[id] = canvasEntry;
     }
