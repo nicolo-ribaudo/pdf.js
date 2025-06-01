@@ -1416,6 +1416,7 @@ class PDFPageProxy {
     pageColors = null,
     printAnnotationStorage = null,
     isEditing = false,
+    partialViewport = null,
   }) {
     this._stats?.time("Overall");
 
@@ -1503,6 +1504,31 @@ class PDFPageProxy {
       }
     };
 
+    let indexes = null;
+    if (partialViewport && this._recordedGroups) {
+      indexes = new Set();
+      const groups = this._recordedGroups;
+      const canvasWidth = canvasContext.canvas.width;
+      const canvasHeight = canvasContext.canvas.height;
+      for (let i = 0, ii = groups.length; i < ii; i++) {
+        const group = groups[i];
+        if (
+          group.minX * canvasWidth <= partialViewport.maxX &&
+          group.maxX * canvasWidth >= partialViewport.minX &&
+          group.minY * canvasHeight <= partialViewport.maxY &&
+          group.maxY * canvasHeight >= partialViewport.minY
+        ) {
+          indexes.add(group.data.idx);
+          group.dependencies.forEach(indexes.add, indexes);
+        }
+      }
+      // TODO: There is a better data structure for this.
+      // The indexes are always checked in increasing order.
+      // Needs benchmarking.
+      indexes = new Set(Array.from(indexes).sort((a, b) => a - b));
+      console.log(indexes);
+    }
+
     const internalRenderTask = new InternalRenderTask({
       callback: complete,
       // Only include the required properties, and *not* the entire object.
@@ -1525,6 +1551,9 @@ class PDFPageProxy {
       useRequestAnimationFrame: !intentPrint,
       pdfBug: this._pdfBug,
       pageColors,
+      filter: (index, name) => {
+        return !indexes || indexes.has(index);
+      },
     });
 
     (intentState.renderTasks ||= new Set()).add(internalRenderTask);
@@ -3118,6 +3147,7 @@ class InternalRenderTask {
     useRequestAnimationFrame = false,
     pdfBug = false,
     pageColors = null,
+    filter = null,
   }) {
     this.callback = callback;
     this.params = params;
@@ -3131,6 +3161,7 @@ class InternalRenderTask {
     this.filterFactory = filterFactory;
     this._pdfBug = pdfBug;
     this.pageColors = pageColors;
+    this._filter = filter;
 
     this.running = false;
     this.graphicsReadyCallback = null;
@@ -3269,7 +3300,8 @@ class InternalRenderTask {
       this.operatorList,
       this.operatorListIdx,
       this._continueBound,
-      this.stepper
+      this.stepper,
+      this._filter
     );
     if (this.operatorListIdx === this.operatorList.argsArray.length) {
       this.running = false;

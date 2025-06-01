@@ -163,6 +163,8 @@ class PDFPageView extends BasePDFPageView {
 
   #layers = [null, null, null, null];
 
+  _partialViewport = null;
+
   /**
    * @param {PDFPageViewOptions} options
    */
@@ -927,6 +929,7 @@ class PDFPageView extends BasePDFPageView {
       annotationCanvasMap: this._annotationCanvasMap,
       pageColors: this.pageColors,
       isEditing: this.#isEditing,
+      partialViewport: this._partialViewport,
     };
   }
 

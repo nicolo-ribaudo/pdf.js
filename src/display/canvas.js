@@ -821,7 +821,8 @@ class CanvasGraphics {
     operatorList,
     executionStartIdx,
     continueCallback,
-    stepper
+    stepper,
+    filter
   ) {
     const argsArray = operatorList.argsArray;
     const fnArray = operatorList.fnArray;
@@ -847,6 +848,11 @@ class CanvasGraphics {
       if (stepper !== undefined && i === stepper.nextBreakPoint) {
         stepper.breakIt(i, continueCallback);
         return i;
+      }
+
+      if (filter && !filter(i)) {
+        i++;
+        continue;
       }
 
       fnId = fnArray[i];
@@ -2882,7 +2888,6 @@ class CanvasGraphics {
   }
 
   paintImageXObject(opIdx, objId) {
-    debugger;
     if (!this.contentVisible) {
       return;
     }

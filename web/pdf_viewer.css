@@ -221,3 +221,15 @@
   margin: 0 auto;
   border: 2px solid transparent;
 }
+
+#viewer.canvas-only {
+  .pdfBugGroupsLayer,
+  .textLayer,
+  .annotationLayer,
+  .annotationEditorLayer {
+    &,
+    * {
+      pointer-events: none !important;
+    }
+  }
+}
