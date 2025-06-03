@@ -22,6 +22,7 @@ class RendererMessageHandler {
     let workerHandler;
 
     function setupWorkerHandler() {
+      console.trace("CALLED");
       workerHandler.on("commonobj", ({ id, type, exportedData }) => {
         console.log("DIRECTLY GOT A COMMON OBJ", id, type, exportedData);
         handleCommonObj(id, type, exportedData);
@@ -39,13 +40,91 @@ class RendererMessageHandler {
     }
 
     mainHandler.on("Ready", ({ port: channelPort }) => {
+      console.trace(channelPort);
       workerHandler = new MessageHandler("renderer", "worker", channelPort);
       setupWorkerHandler();
     });
+
+    mainHandler.on("commonobj", ({ id, type, exportedData }) => {
+      console.log("GOT A COMMON OBJ", id, type, exportedData);
+      // handleCommonObj(id, type, exportedData, workerHandler);
+    });
+    mainHandler.on("obj", ({ pageIndex, id, type, exportedData }) => {
+      console.log("GOT AN OBJ", pageIndex, id, type, exportedData);
+      handleObj(pageIndex, id, type, exportedData);
+    });
+    mainHandler.on(
+      "init",
+      ({ pageIndex, canvas, drawingParams, map, colors, enableHWA }) => {
+        console.log("INIT PAGE", pageIndex, canvas, drawingParams);
+        assert(!pages.has(pageIndex), "Page already initialized");
+        const ctx = canvas.getContext("2d");
+        let pageObjs = objs.get(pageIndex);
+        if (!pageObjs) {
+          pageObjs = new PDFObjects();
+          objs.set(pageIndex, pageObjs);
+        }
+        const gfx = new CanvasGraphics(
+          ctx,
+          commonObjs,
+          pageObjs,
+          new OffscreenCanvasFactory({ enableHWA }),
+          null,
+          { isVisible },
+          map,
+          colors
+        );
+        gfx.beginDrawing(drawingParams);
+        pages.set(pageIndex, new Page(canvas, gfx));
+      }
+    );
+    mainHandler.on(
+      "render",
+      async ({ pageIndex, operatorList, operatorListIdx, stepper }) => {
+        const page = pages.get(pageIndex);
+        assert(page !== undefined, "Page not initialized");
+        const { canvas, gfx } = page;
+        const fOperatorListIdx = gfx.executeOperatorList(
+          operatorList,
+          operatorListIdx,
+          continueFn,
+          stepper
+        );
+        const bitmap = await canvas.transferToImageBitmap();
+        mainHandler.send("renderComplete", { bitmap, fOperatorListIdx }, [
+          bitmap,
+        ]);
+      }
+    );
+    mainHandler.on("end", ({ pageIndex }) => {
+      const page = pages.get(pageIndex);
+      assert(page !== undefined, "Page not initialized");
+      const { gfx: eGfx } = page;
+      eGfx.endDrawing();
+    });
+    mainHandler.on("isVisible", ({ group, signal }) => {
+      const visible = isVisible(group);
+      signal[0] = visible ? 1 : 0;
+      Atomics.notify(signal, 0, 1);
+    });
+    mainHandler.on("continue", ({ signal }) => {
+      continueFn();
+      signal[0] = 1;
+      Atomics.notify(signal, 0, 1);
+    });
+    // mainHandler.send("SETUP", null);
+    // mainHandler.on("SETUP", () => console.log("SETUP DONE"));
+    // mainHandler.send("Ready", null);
+    // mainHandler.on("Ready", function () {
+    //   console.log("Renderer is ready (FROM MAIN)");
+    // });
+    // mainHandler.send("rendererReady", null);
+    // console.log("RendererMessageHandler initialized");
+    // return mainHandler;
   }
 }
 
-function handleCommonObj(id, type, exportedData) {
+function handleCommonObj(id, type, exportedData, handler) {
   if (commonObjs.has(id)) {
     return;
   }
@@ -67,7 +146,7 @@ function handleCommonObj(id, type, exportedData) {
 
       fontLoader
         .bind(font)
-        .catch(() => self.postMessage("FontFallback", { id }))
+        .catch(() => handler.sendWithPromise("FontFallback", { id }))
         .finally(() => {
           if (!font.fontExtraProperties && font.data) {
             // Immediately release the `font.data` property once the font

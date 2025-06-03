@@ -512,7 +512,6 @@ function getDocument(src = {}) {
 
         const workerChannel = new MessageChannel();
         const messageHandler = new MessageHandler(docId, workerId, worker.port);
-        debugger
         const transport = new WorkerTransport(
           messageHandler,
           task,
@@ -2836,8 +2835,7 @@ class WorkerTransport {
     });
 
     messageHandler.on("commonobj", ([id, type, exportedData]) => {
-      this.displayWorker.postMessage({
-        type: "commonobj",
+      this.rendererMessageHandler.send("commonobj", {
         id,
         objType: type,
         exportedData,
@@ -2910,8 +2908,7 @@ class WorkerTransport {
     });
 
     messageHandler.on("obj", ([id, pageIndex, type, imageData]) => {
-      this.displayWorker.postMessage({
-        type: "obj",
+      this.rendererMessageHandler.send("obj", {
         id,
         pageIndex,
         objType: type,
@@ -3315,9 +3312,63 @@ class InternalRenderTask {
     this._canvas = params.canvasContext.canvas;
     this.displayWorker = displayWorker;
     this.rendererMessageHandler = rendererMessageHandler;
-    this.rendererMessageHandler.on("ready", () =>
-      console.log("RENDERER IS ready")
-    );
+    this.rendererMessageHandler.on("renderComplete", data => {
+      this.operatorListIdx = data.fOperatorListIdx;
+      if (this.operatorListIdx === this.operatorList.argsArray.length) {
+        this.running = false;
+        if (this.operatorList.lastChunk) {
+          this.rendererMessageHandler.send("end", {
+            pageIndex: this._pageIndex,
+          });
+          InternalRenderTask.#canvasInUse.delete(this._canvas);
+          this.callback();
+        }
+      }
+      console.log("RENDER COMPLETE", this.operatorListIdx);
+      this.params.canvasContext.drawImage(data.bitmap, 0, 0);
+      data.bitmap.close();
+    });
+
+    // _handleWorkerMessage(optionalContentConfig, event) {
+    // console.log("WORKER MESSAGE", event.data);
+    //   const { type, bitmap, signal } = event.data;
+    //   switch (type) {
+    //     case "renderComplete":
+    //       const { fOperatorListIdx } = event.data;
+    //       this.operatorListIdx = fOperatorListIdx;
+    //       if (this.operatorListIdx === this.operatorList.argsArray.length) {
+    //         this.running = false;
+    //         if (this.operatorList.lastChunk) {
+    //           this.displayWorker.postMessage({
+    //             type: "end",
+    //             pageIndex: this._pageIndex,
+    //           });
+    //           InternalRenderTask.#canvasInUse.delete(this._canvas);
+
+    //           this.callback();
+    //         }
+    //       }
+    //       // console.log("HERE MAGIC HAPPENS", bitmap);
+    //       // console.log(this.params.canvasContext);
+    //       this.params.canvasContext.drawImage(bitmap, 0, 0);
+    //       bitmap.close();
+    //       break;
+    //     case "isVisible":
+    //       const { group } = event.data;
+    //       Atomics.store(
+    //         signal,
+    //         0,
+    //         optionalContentConfig.isVisible(group) ? 1 : -1
+    //       );
+    //       Atomics.notify(signal, 0);
+    //       break;
+    //     case "continue":
+    //       this._continueBound(this);
+    //       Atomics.store(signal, 0, 1);
+    //       Atomics.notify(signal, 0);
+    //       break;
+    //   }
+    // }
   }
 
   get completed() {
@@ -3354,9 +3405,9 @@ class InternalRenderTask {
       this._canvas.width,
       this._canvas.height
     );
-    this.displayWorker.postMessage(
+    this.rendererMessageHandler.send(
+      "init",
       {
-        type: "init",
         canvas: offscreen,
         drawingParams: {
           viewport,
@@ -3371,10 +3422,6 @@ class InternalRenderTask {
       },
       [offscreen]
     );
-    this.displayWorker.onmessage = this._handleWorkerMessage.bind(
-      this,
-      optionalContentConfig
-    );
     this.operatorListIdx = 0;
     this.graphicsReady = true;
     this.graphicsReadyCallback?.();
@@ -3383,10 +3430,7 @@ class InternalRenderTask {
   cancel(error = null, extraDelay = 0) {
     this.running = false;
     this.cancelled = true;
-    this.displayWorker.postMessage({
-      type: "end",
-      pageIndex: this._pageIndex,
-    });
+    this.rendererMessageHandler.send("end", { pageIndex: this._pageIndex });
     if (this.#rAF) {
       window.cancelAnimationFrame(this.#rAF);
       this.#rAF = null;
@@ -3442,54 +3486,12 @@ class InternalRenderTask {
     if (this.cancelled) {
       return;
     }
-    this.displayWorker.postMessage({
-      type: "render",
+    this.rendererMessageHandler.send("render", {
       operatorList: this.operatorList,
       operatorListIdx: this.operatorListIdx,
       stepper: this.stepper,
       pageIndex: this._pageIndex,
     });
-  }
-
-  _handleWorkerMessage(optionalContentConfig, event) {
-    // console.log("WORKER MESSAGE", event.data);
-    const { type, bitmap, signal } = event.data;
-    switch (type) {
-      case "renderComplete":
-        const { fOperatorListIdx } = event.data;
-        this.operatorListIdx = fOperatorListIdx;
-        if (this.operatorListIdx === this.operatorList.argsArray.length) {
-          this.running = false;
-          if (this.operatorList.lastChunk) {
-            this.displayWorker.postMessage({
-              type: "end",
-              pageIndex: this._pageIndex,
-            });
-            InternalRenderTask.#canvasInUse.delete(this._canvas);
-
-            this.callback();
-          }
-        }
-        // console.log("HERE MAGIC HAPPENS", bitmap);
-        // console.log(this.params.canvasContext);
-        this.params.canvasContext.drawImage(bitmap, 0, 0);
-        bitmap.close();
-        break;
-      case "isVisible":
-        const { group } = event.data;
-        Atomics.store(
-          signal,
-          0,
-          optionalContentConfig.isVisible(group) ? 1 : -1
-        );
-        Atomics.notify(signal, 0);
-        break;
-      case "continue":
-        this._continueBound(this);
-        Atomics.store(signal, 0, 1);
-        Atomics.notify(signal, 0);
-        break;
-    }
   }
 }
 

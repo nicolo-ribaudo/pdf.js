@@ -852,12 +852,16 @@ class WorkerMessageHandler {
       setupDoc(docParams);
       docParams = null; // we don't need docParams anymore -- saving memory.
       rendererHandler = new MessageHandler("worker", "renderer", data.port);
-      rendererHandler.send("Ready", null);
-      rendererHandler.on("Ready", function () {
-        console.log("Renderer is ready (FROM WORKER)");
+      // rendererHandler.send("Ready", null);
+      // rendererHandler.on("Ready", function (data) {
+      //   console.trace(data);
+      //   // console.log("Renderer is ready (FROM WORKER)");
+      // });
+      // rendererHandler.send("SETUP", null);
+      // rendererHandler.on("SETUP", () => console.log("SETUP DONE"));
+      rendererHandler.on("FontFallback", function (dat) {
+        return pdfManager.fontFallback(dat.id, handler);
       });
-      rendererHandler.send("SETUP", null);
-      rendererHandler.on("SETUP", () => console.log("SETUP DONE"));
     });
 
     if (typeof PDFJSDev === "undefined" || PDFJSDev.test("TESTING")) {
