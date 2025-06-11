@@ -43,9 +43,16 @@ class RendererMessageHandler {
 
     mainHandler.on(
       "init",
-      ({ pageIndex, canvas, drawingParams, map, colors, enableHWA }) => {
-        console.log("INIT PAGE", pageIndex, canvas, drawingParams);
-        assert(!pages.has(pageIndex), "Page already initialized");
+      ({
+        pageIndex,
+        canvas,
+        drawingParams,
+        map,
+        colors,
+        enableHWA,
+        taskID,
+      }) => {
+        assert(!tasks.has(taskID), "Task already initialized");
         const ctx = canvas.getContext("2d");
         let pageObjs = objs.get(pageIndex);
         if (!pageObjs) {
@@ -63,30 +70,29 @@ class RendererMessageHandler {
           colors
         );
         gfx.beginDrawing(drawingParams);
-        pages.set(pageIndex, new Page(canvas, gfx));
+        tasks.set(taskID, new Task(canvas, gfx));
       }
     );
     mainHandler.on(
       "render",
-      async ({ pageIndex, operatorList, operatorListIdx }) => {
-        console.log("RENDER PAGE", pageIndex, operatorList, operatorListIdx);
-        const page = pages.get(pageIndex);
-        assert(page !== undefined, "Page not initialized");
-        const { canvas, gfx } = page;
+      async ({ operatorList, operatorListIdx, taskID }) => {
+        console.log("RENDER PAGE", operatorList, operatorListIdx);
+        const task = tasks.get(taskID);
+        assert(task !== undefined, "Task not initialized");
+        const { canvas, gfx } = task;
         const fOperatorListIdx = gfx.executeOperatorList(
           operatorList,
           operatorListIdx,
-          () => continueFn(pageIndex)
+          () => continueFn(taskID)
         );
         const bitmap = await canvas.transferToImageBitmap();
         return [fOperatorListIdx, bitmap];
       }
     );
-    mainHandler.on("end", ({ pageIndex }) => {
-      const page = pages.get(pageIndex);
-      assert(page !== undefined, "Page not initialized");
-      const { gfx: eGfx } = page;
-      eGfx.endDrawing();
+    mainHandler.on("end", ({ taskID }) => {
+      const task = tasks.get(taskID);
+      assert(task !== undefined, "Task not initialized");
+      task.gfx.endDrawing();
     });
   }
 }
@@ -178,15 +184,15 @@ function handleObj(pageIndex, id, type, exportedData) {
   }
 }
 
-class Page {
+class Task {
   constructor(canvas, gfx) {
     this.canvas = canvas;
     this.gfx = gfx;
   }
 }
 
-const pages = new Map();
+const tasks = new Map();
 
-function continueFn(pageIndex) {
-  mainHandler.send("continue", { pageIndex });
+function continueFn(taskID) {
+  mainHandler.send("continue", { taskID });
 }

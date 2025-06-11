@@ -2670,9 +2670,9 @@ class WorkerTransport {
   setupMessageHandler() {
     const { messageHandler, loadingTask, rendererHandler } = this;
 
-    rendererHandler.on("continue", ({ pageIndex }) => {
-      const continueFn = this.continueFnMap.get(pageIndex);
-      console.log("CONTINUE FN", pageIndex, continueFn);
+    rendererHandler.on("continue", ({ taskID }) => {
+      const continueFn = this.continueFnMap.get(taskID);
+      assert(continueFn, `No continue function for taskID: ${taskID}`);
       continueFn?.call();
     });
 
@@ -3288,8 +3288,9 @@ class InternalRenderTask {
     pdfBug = false,
     pageColors = null,
     rendererHandler,
-    continueFnMap = null,
+    continueFnMap,
   }) {
+    this.taskID = self.crypto.randomUUID();
     this.callback = callback;
     this.params = params;
     this.objs = objs;
@@ -3369,6 +3370,7 @@ class InternalRenderTask {
         map: this.annotationCanvasMap,
         colors: this.pageColors,
         enableHWA: this.canvasFactory.enableHWA,
+        taskID: this.taskID,
       },
       [offscreen]
     );
@@ -3380,7 +3382,7 @@ class InternalRenderTask {
   cancel(error = null, extraDelay = 0) {
     this.running = false;
     this.cancelled = true;
-    this.rendererHandler.send("end", { pageIndex: this._pageIndex });
+    this.rendererHandler.send("end", { taskID: this.taskID });
     if (this.#rAF) {
       window.cancelAnimationFrame(this.#rAF);
       this.#rAF = null;
@@ -3436,19 +3438,19 @@ class InternalRenderTask {
     if (this.cancelled) {
       return;
     }
-    this.continueFnMap.set(this._pageIndex, this._continueBound);
+    this.continueFnMap.set(this.taskID, this._continueBound);
     const [operatorListIdx, bitmap] =
       await this.rendererHandler.sendWithPromise("render", {
         operatorList: this.operatorList,
         operatorListIdx: this.operatorListIdx,
-        pageIndex: this._pageIndex,
+        taskID: this.taskID,
       });
     this.operatorListIdx = operatorListIdx;
     if (this.operatorListIdx === this.operatorList.argsArray.length) {
       this.running = false;
       if (this.operatorList.lastChunk) {
         this.rendererHandler.send("end", {
-          pageIndex: this._pageIndex,
+          taskID: this.taskID,
         });
         InternalRenderTask.#canvasInUse.delete(this._canvas);
         this.callback();
