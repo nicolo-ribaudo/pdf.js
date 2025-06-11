@@ -12,42 +12,45 @@ const fontLoader = new FontLoader({
   ownerDocument: self,
 });
 
+let mainHandler, workerHandler;
+
 class RendererMessageHandler {
   static {
     this.initializeFromPort(self);
   }
 
   static initializeFromPort(port) {
-    const mainHandler = new MessageHandler("renderer", "main", port);
-    let workerHandler;
+    mainHandler = new MessageHandler("renderer", "main", port);
+    mainHandler.send("ready", null);
 
-    function setupWorkerHandler() {
-      console.trace("CALLED");
-      workerHandler.on("commonobj", ({ id, type, exportedData }) => {
-        console.log("DIRECTLY GOT A COMMON OBJ", id, type, exportedData);
-        handleCommonObj(id, type, exportedData);
-      });
-      workerHandler.on("obj", ({ pageIndex, id, type, exportedData }) => {
-        console.log("DIRECTLY GOT AN OBJ", pageIndex, id, type, exportedData);
-        handleObj(pageIndex, id, type, exportedData);
-      });
-      workerHandler.send("SETUP", null);
-      workerHandler.on("SETUP", () => console.log("SETUP DONE"));
-      workerHandler.send("Ready", null);
+    mainHandler.on("Ready", function () {
+      console.log("RendererMessageHandler is ready");
+    });
+
+    mainHandler.on("configure", ({ channelPort }) => {
+      workerHandler = new MessageHandler(
+        "renderer-channel",
+        "worker-channel",
+        channelPort
+      );
+      // workerHandler.on("commonobj", ({ id, type, exportedData }) => {
+      //   console.log("DIRECTLY GOT A COMMON OBJ", id, type, exportedData);
+      //   handleCommonObj(id, type, exportedData);
+      // });
+      // workerHandler.on("obj", ({ pageIndex, id, type, exportedData }) => {
+      //   console.log("DIRECTLY GOT AN OBJ", pageIndex, id, type, exportedData);
+      //   handleObj(pageIndex, id, type, exportedData);
+      // });
       workerHandler.on("Ready", function () {
         console.log("Renderer is ready (FROM WORKER)");
       });
-    }
-
-    mainHandler.on("Ready", ({ port: channelPort }) => {
-      console.trace(channelPort);
-      workerHandler = new MessageHandler("renderer", "worker", channelPort);
-      setupWorkerHandler();
+      workerHandler.send("Ready", null);
+      console.log(workerHandler);
     });
 
     mainHandler.on("commonobj", ({ id, type, exportedData }) => {
       console.log("GOT A COMMON OBJ", id, type, exportedData);
-      // handleCommonObj(id, type, exportedData, workerHandler);
+      handleCommonObj(id, type, exportedData, workerHandler);
     });
     mainHandler.on("obj", ({ pageIndex, id, type, exportedData }) => {
       console.log("GOT AN OBJ", pageIndex, id, type, exportedData);
@@ -91,9 +94,11 @@ class RendererMessageHandler {
           stepper
         );
         const bitmap = await canvas.transferToImageBitmap();
-        mainHandler.send("renderComplete", { bitmap, fOperatorListIdx }, [
-          bitmap,
-        ]);
+        mainHandler.send(
+          "renderComplete",
+          { bitmap, operatorListIdx: fOperatorListIdx, pageIndex },
+          [bitmap]
+        );
       }
     );
     mainHandler.on("end", ({ pageIndex }) => {
@@ -205,7 +210,9 @@ function handleObj(pageIndex, id, type, exportedData) {
       pageObjs.resolve(id, exportedData);
       break;
     default:
-      throw new Error(`Got unknown object type ${type}`);
+      throw new Error(
+        `Got unknown object type ${type} id ${id} for page ${pageIndex} data ${JSON.stringify(exportedData)}`
+      );
   }
 }
 

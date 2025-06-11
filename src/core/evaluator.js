@@ -554,6 +554,12 @@ class PartialEvaluator {
     const transfers = imgData ? [imgData.bitmap || imgData.data.buffer] : null;
 
     if (this.parsingType3Font || cacheGlobally) {
+      console.log(this.rendererHandler);
+      this.rendererHandler.send(
+        "commonobj",
+        [objId, "Image", imgData],
+        transfers
+      );
       return this.handler.send(
         "commonobj",
         [objId, "Image", imgData],
@@ -1517,9 +1523,17 @@ class PartialEvaluator {
     }
     localShadingPatternCache.set(shading, id);
 
+    console.log(this.rendererHandler);
     if (this.parsingType3Font) {
+      this.rendererHandler.send("commonobj", [id, "Pattern", patternIR]);
       this.handler.send("commonobj", [id, "Pattern", patternIR]);
     } else {
+      this.rendererHandler.send("obj", [
+        id,
+        this.pageIndex,
+        "Pattern",
+        patternIR,
+      ]);
       this.handler.send("obj", [id, this.pageIndex, "Pattern", patternIR]);
     }
     return id;
@@ -4657,6 +4671,7 @@ class TranslatedFont {
     }
     this.#sent = true;
 
+    console.log(rendererHandler);
     handler.send("commonobj", [
       this.loadedName,
       "Font",

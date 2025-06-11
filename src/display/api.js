@@ -382,10 +382,13 @@ function getDocument(src = {}) {
         : new WasmFactory({ baseUrl: wasmUrl }),
   };
 
+  const workerChannel = new MessageChannel();
+
   if (!worker) {
     const workerParams = {
       verbosity,
       port: GlobalWorkerOptions.workerPort,
+      channelPort: workerChannel.port1,
     };
     // Worker was not provided -- creating and owning our own. If message port
     // is specified in global worker options, using it.
@@ -394,6 +397,17 @@ function getDocument(src = {}) {
       : new PDFWorker(workerParams);
     task._worker = worker;
   }
+
+  const renderer = new Worker("../src/display/worker.js", {
+    type: "module",
+  });
+  const rendererHandler = new MessageHandler("main", "renderer", renderer);
+  rendererHandler.send("configure", { channelPort: workerChannel.port2 }, [
+    workerChannel.port2,
+  ]);
+  rendererHandler.on("ready", () => {
+    console.log("Renderer is ready (FROM MAIN)");
+  });
 
   const docParams = {
     docId,
@@ -510,7 +524,6 @@ function getDocument(src = {}) {
           throw new Error("Worker was destroyed");
         }
 
-        const workerChannel = new MessageChannel();
         const messageHandler = new MessageHandler(docId, workerId, worker.port);
         const transport = new WorkerTransport(
           messageHandler,
@@ -518,12 +531,17 @@ function getDocument(src = {}) {
           networkStream,
           transportParams,
           transportFactory,
-          workerChannel.port1
+          rendererHandler
         );
         task._transport = transport;
-        messageHandler.send("Ready", { port: workerChannel.port2 }, [
-          workerChannel.port2,
-        ]);
+        messageHandler.send("Ready", null);
+        rendererHandler.send("Ready", null);
+        // rendererHandler.send("Ready", { port: workerChannel.port1 }, [
+        //   workerChannel.port1,
+        // ]);
+        // messageHandler.send("Ready", { port: workerChannel.port2 }, [
+        //   workerChannel.port2,
+        // ]);
       });
     })
     .catch(task._capability.reject);
@@ -1620,6 +1638,7 @@ class PDFPageProxy {
       pageColors,
       displayWorker: this._transport.displayWorker,
       rendererMessageHandler: this._transport.rendererMessageHandler,
+      internalRenderTaskMap: this._transport.internalRenderTaskMap,
     });
 
     (intentState.renderTasks ||= new Set()).add(internalRenderTask);
@@ -2092,6 +2111,8 @@ class LoopbackPort {
  * @property {Worker} [port] - The `workerPort` object.
  * @property {number} [verbosity] - Controls the logging level;
  *   the constants from {@link VerbosityLevel} should be used.
+ * @property {MessagePort} [channelPort] - The channel port to use for
+ *   communication with the renderer thread.
  */
 
 /**
@@ -2155,10 +2176,12 @@ class PDFWorker {
     name = null,
     port = null,
     verbosity = getVerbosityLevel(),
+    channelPort = null,
   } = {}) {
     this.name = name;
     this.destroyed = false;
     this.verbosity = verbosity;
+    this.channelPort = channelPort;
 
     this._readyCapability = Promise.withResolvers();
     this._port = null;
@@ -2190,9 +2213,14 @@ class PDFWorker {
   #resolve() {
     this._readyCapability.resolve();
     // Send global setting, e.g. verbosity level.
-    this._messageHandler.send("configure", {
-      verbosity: this.verbosity,
-    });
+    this._messageHandler.send(
+      "configure",
+      {
+        verbosity: this.verbosity,
+        channelPort: this.channelPort,
+      },
+      [this.channelPort]
+    );
   }
 
   /**
@@ -2458,7 +2486,7 @@ class WorkerTransport {
     networkStream,
     params,
     factory,
-    port
+    rendererMessageHandler
   ) {
     this.messageHandler = messageHandler;
     this.loadingTask = loadingTask;
@@ -2475,16 +2503,18 @@ class WorkerTransport {
     this.standardFontDataFactory = factory.standardFontDataFactory;
     this.wasmFactory = factory.wasmFactory;
 
+    this.rendererMessageHandler = rendererMessageHandler;
+
     this.commonObjs = new PDFObjects();
-    this.displayWorker = new Worker("../src/display/worker.js", {
-      type: "module",
-    });
-    this.rendererMessageHandler = new MessageHandler(
-      "main",
-      "renderer",
-      this.displayWorker
+    this.internalRenderTaskMap = new Map();
+    this.rendererMessageHandler.on(
+      "renderComplete",
+      ({ pageIndex, bitmap, operatorListIdx }) => {
+        this.internalRenderTaskMap
+          .get(pageIndex)
+          .finalizeRender(operatorListIdx, bitmap);
+      }
     );
-    this.rendererMessageHandler.send("Ready", { port }, [port]);
 
     this.destroyed = false;
     this.destroyCapability = null;
@@ -2837,7 +2867,7 @@ class WorkerTransport {
     messageHandler.on("commonobj", ([id, type, exportedData]) => {
       this.rendererMessageHandler.send("commonobj", {
         id,
-        objType: type,
+        type,
         exportedData,
       });
       if (this.destroyed) {
@@ -2911,7 +2941,7 @@ class WorkerTransport {
       this.rendererMessageHandler.send("obj", {
         id,
         pageIndex,
-        objType: type,
+        type,
         exportedData: imageData,
       });
       if (this.destroyed) {
@@ -3282,6 +3312,7 @@ class InternalRenderTask {
     pageColors = null,
     displayWorker,
     rendererMessageHandler,
+    internalRenderTaskMap,
   }) {
     this.callback = callback;
     this.params = params;
@@ -3312,22 +3343,7 @@ class InternalRenderTask {
     this._canvas = params.canvasContext.canvas;
     this.displayWorker = displayWorker;
     this.rendererMessageHandler = rendererMessageHandler;
-    this.rendererMessageHandler.on("renderComplete", data => {
-      this.operatorListIdx = data.fOperatorListIdx;
-      if (this.operatorListIdx === this.operatorList.argsArray.length) {
-        this.running = false;
-        if (this.operatorList.lastChunk) {
-          this.rendererMessageHandler.send("end", {
-            pageIndex: this._pageIndex,
-          });
-          InternalRenderTask.#canvasInUse.delete(this._canvas);
-          this.callback();
-        }
-      }
-      console.log("RENDER COMPLETE", this.operatorListIdx);
-      this.params.canvasContext.drawImage(data.bitmap, 0, 0);
-      data.bitmap.close();
-    });
+    this.internalRenderTaskMap = internalRenderTaskMap;
 
     // _handleWorkerMessage(optionalContentConfig, event) {
     // console.log("WORKER MESSAGE", event.data);
@@ -3492,6 +3508,23 @@ class InternalRenderTask {
       stepper: this.stepper,
       pageIndex: this._pageIndex,
     });
+    this.internalRenderTaskMap.set(this._pageIndex, this);
+  }
+
+  finalizeRender(operatorListIdx, bitmap) {
+    this.operatorListIdx = operatorListIdx;
+    if (this.operatorListIdx === this.operatorList.argsArray.length) {
+      this.running = false;
+      if (this.operatorList.lastChunk) {
+        this.rendererMessageHandler.send("end", {
+          pageIndex: this._pageIndex,
+        });
+        InternalRenderTask.#canvasInUse.delete(this._canvas);
+        this.callback();
+      }
+    }
+    this.params.canvasContext.drawImage(bitmap, 0, 0);
+    bitmap.close();
   }
 }
 

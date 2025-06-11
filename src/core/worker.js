@@ -82,6 +82,8 @@ class WorkerMessageHandler {
 
   static setup(handler, port) {
     let testMessageProcessed = false;
+    let rendererHandler = null;
+
     handler.on("test", data => {
       if (testMessageProcessed) {
         return; // we already processed 'test' message once
@@ -94,12 +96,24 @@ class WorkerMessageHandler {
 
     handler.on("configure", data => {
       setVerbosityLevel(data.verbosity);
+      rendererHandler = new MessageHandler(
+        "worker-channel",
+        "renderer-channel",
+        data.channelPort
+      );
+      rendererHandler.on("Ready", () => {
+        console.log("Worker is ready (FROM RENDERER)");
+        rendererHandler.send("Ready", null);
+      });
+      console.log(rendererHandler);
     });
 
-    handler.on("GetDocRequest", data => this.createDocumentHandler(data, port));
+    handler.on("GetDocRequest", data =>
+      this.createDocumentHandler(data, port, rendererHandler)
+    );
   }
 
-  static createDocumentHandler(docParams, port) {
+  static createDocumentHandler(docParams, port, rendererHandler) {
     // This context is actually holds references on pdfManager and handler,
     // until the latter is destroyed.
     let pdfManager;
@@ -140,7 +154,6 @@ class WorkerMessageHandler {
     }
     const workerHandlerName = docId + "_worker";
     let handler = new MessageHandler(workerHandlerName, docId, port);
-    let rendererHandler;
 
     function ensureNotTerminated() {
       if (terminated) {
@@ -848,20 +861,8 @@ class WorkerMessageHandler {
     });
 
     handler.on("Ready", function (data) {
-      console.log(data);
       setupDoc(docParams);
       docParams = null; // we don't need docParams anymore -- saving memory.
-      rendererHandler = new MessageHandler("worker", "renderer", data.port);
-      // rendererHandler.send("Ready", null);
-      // rendererHandler.on("Ready", function (data) {
-      //   console.trace(data);
-      //   // console.log("Renderer is ready (FROM WORKER)");
-      // });
-      // rendererHandler.send("SETUP", null);
-      // rendererHandler.on("SETUP", () => console.log("SETUP DONE"));
-      rendererHandler.on("FontFallback", function (dat) {
-        return pdfManager.fontFallback(dat.id, handler);
-      });
     });
 
     if (typeof PDFJSDev === "undefined" || PDFJSDev.test("TESTING")) {
