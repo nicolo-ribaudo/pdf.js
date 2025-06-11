@@ -33,13 +33,11 @@ class RendererMessageHandler {
         "worker-channel",
         channelPort
       );
-      workerHandler.on("commonobj", ({ id, type, exportedData }) => {
-        console.log("DIRECTLY GOT A COMMON OBJ", id, type, exportedData);
-        handleCommonObj(id, type, exportedData);
+      workerHandler.on("commonobj", ([id, type, data]) => {
+        handleCommonObj(id, type, data, workerHandler);
       });
-      workerHandler.on("obj", ({ pageIndex, id, type, exportedData }) => {
-        console.log("DIRECTLY GOT AN OBJ", pageIndex, id, type, exportedData);
-        handleObj(pageIndex, id, type, exportedData);
+      workerHandler.on("obj", ([id, pageIndex, type, data]) => {
+        handleObj(pageIndex, id, type, data);
       });
       workerHandler.on("Ready", function () {
         console.log("Renderer is ready (FROM WORKER)");
@@ -47,14 +45,6 @@ class RendererMessageHandler {
       workerHandler.send("Ready", null);
     });
 
-    mainHandler.on("commonobj", ({ id, type, exportedData }) => {
-      console.log("GOT A COMMON OBJ", id, type, exportedData);
-      handleCommonObj(id, type, exportedData, workerHandler);
-    });
-    mainHandler.on("obj", ({ pageIndex, id, type, exportedData }) => {
-      console.log("GOT AN OBJ", pageIndex, id, type, exportedData);
-      handleObj(pageIndex, id, type, exportedData);
-    });
     mainHandler.on(
       "init",
       ({ pageIndex, canvas, drawingParams, map, colors, enableHWA }) => {
@@ -83,6 +73,13 @@ class RendererMessageHandler {
     mainHandler.on(
       "render",
       async ({ pageIndex, operatorList, operatorListIdx, stepper }) => {
+        console.log(
+          "RENDER PAGE",
+          pageIndex,
+          operatorList,
+          operatorListIdx,
+          stepper
+        );
         const page = pages.get(pageIndex);
         assert(page !== undefined, "Page not initialized");
         const { canvas, gfx } = page;
@@ -93,11 +90,7 @@ class RendererMessageHandler {
           stepper
         );
         const bitmap = await canvas.transferToImageBitmap();
-        mainHandler.send(
-          "renderComplete",
-          { bitmap, operatorListIdx: fOperatorListIdx, pageIndex },
-          [bitmap]
-        );
+        return [fOperatorListIdx, bitmap];
       }
     );
     mainHandler.on("end", ({ pageIndex }) => {
@@ -215,69 +208,6 @@ class Page {
 
 const pages = new Map();
 
-// self.onmessage = async function (event) {
-//   console.log("WORKER EVENT", event.data);
-//   const { type, pageIndex, id, objType, exportedData } = event.data;
-//   const page = pages.get(pageIndex);
-//   console.log("page", page);
-//   switch (type) {
-//     case "init":
-//       assert(page === undefined, "Page already initialized");
-//       const {
-//         canvas,
-//         drawingParams: { transform, viewport, background, transparency },
-//         map,
-//         colors,
-//         enableHWA,
-//       } = event.data;
-//       const ctx = canvas.getContext("2d");
-//       let pageObjs = objs.get(pageIndex);
-//       if (!pageObjs) {
-//         pageObjs = new PDFObjects();
-//         objs.set(pageIndex, pageObjs);
-//       }
-//       const gfx = new CanvasGraphics(
-//         ctx,
-//         commonObjs,
-//         pageObjs,
-//         new OffscreenCanvasFactory({ enableHWA }),
-//         null,
-//         { isVisible },
-//         map,
-//         colors
-//       );
-//       gfx.beginDrawing({
-//         transform,
-//         viewport,
-//         transparency,
-//         background,
-//       });
-//       pages.set(pageIndex, new Page(canvas, gfx));
-//       break;
-//     case "render":
-//       assert(page !== undefined, "Page not initialized");
-//       const { canvas: rCanvas, gfx: rGfx } = page;
-//       const { operatorList, operatorListIdx, stepper } = event.data;
-//       const fOperatorListIdx = rGfx.executeOperatorList(
-//         operatorList,
-//         operatorListIdx,
-//         continueFn,
-//         stepper
-//       );
-//       const bitmap = await rCanvas.transferToImageBitmap();
-//       console.log("bitmap", bitmap);
-//       self.postMessage({ type: "renderComplete", bitmap, fOperatorListIdx }, [
-//         bitmap,
-//       ]);
-//       break;
-//     case "end":
-//       assert(page !== undefined, "Page not initialized");
-//       const { gfx: eGfx } = page;
-//       eGfx.endDrawing();
-//       break;
-//   }
-// };
-
 // TODO: this is a semi hack that blocks the worker for this operation. Ideally
 // we should use a promise and resolve it when the main thread sends the
 // isVisible message back. This would allow us to use the worker for other
@@ -285,14 +215,12 @@ const pages = new Map();
 function isVisible(group) {
   const signal = new Int32Array(new SharedArrayBuffer(4));
   signal[0] = 0;
-  self.postMessage({
+  mainHandler.send("isVisible", {
     signal,
-    type: "isVisible",
     group,
   });
   Atomics.wait(signal, 0, 0);
   const visible = signal[0] === 1;
-  // console.log("isVisible", group, visible);
   return visible;
 }
 

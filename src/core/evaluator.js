@@ -554,27 +554,27 @@ class PartialEvaluator {
     const transfers = imgData ? [imgData.bitmap || imgData.data.buffer] : null;
 
     if (this.parsingType3Font || cacheGlobally) {
-      this.rendererHandler.send(
+      return this.rendererHandler.send(
         "commonobj",
         [objId, "Image", imgData],
         transfers
       );
-      return this.handler.send(
-        "commonobj",
-        [objId, "Image", imgData],
-        transfers
-      );
+      // return this.handler.send(
+      //   "commonobj",
+      //   [objId, "Image", imgData],
+      //   transfers
+      // );
     }
-    this.rendererHandler.send(
+    return this.rendererHandler.send(
       "obj",
       [objId, this.pageIndex, "Image", imgData],
       transfers
     );
-    return this.handler.send(
-      "obj",
-      [objId, this.pageIndex, "Image", imgData],
-      transfers
-    );
+    // return this.handler.send(
+    //   "obj",
+    //   [objId, this.pageIndex, "Image", imgData],
+    //   transfers
+    // );
   }
 
   async buildPaintImageXObject({
@@ -4698,7 +4698,7 @@ class TranslatedFont {
     ]);
   }
 
-  fallback(handler, evaluatorOptions) {
+  fallback(handler, evaluatorOptions, rendererHandler) {
     if (!this.font.data) {
       return;
     }
@@ -4714,7 +4714,8 @@ class TranslatedFont {
       this.font,
       /* glyphs = */ this.font.glyphCacheValues,
       handler,
-      evaluatorOptions
+      evaluatorOptions,
+      rendererHandler
     );
   }
 

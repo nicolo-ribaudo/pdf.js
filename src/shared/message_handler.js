@@ -94,7 +94,6 @@ class MessageHandler {
   }
 
   #onMessage({ data }) {
-    // console.log("HANDLER", data);
     if (data.targetName !== this.sourceName) {
       return;
     }

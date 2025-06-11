@@ -822,6 +822,11 @@ class WorkerMessageHandler {
         .then(page => pdfManager.ensure(page, "getStructTree"));
     });
 
+    rendererHandler.on("FontFallback", function (data) {
+      console.log("RENDERER IS CALLING FontFallback", data.id);
+      return pdfManager.fontFallback(data.id, handler, rendererHandler);
+    });
+
     handler.on("FontFallback", function (data) {
       return pdfManager.fontFallback(data.id, handler, rendererHandler);
     });

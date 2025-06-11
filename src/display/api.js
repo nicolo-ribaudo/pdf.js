@@ -536,12 +536,6 @@ function getDocument(src = {}) {
         task._transport = transport;
         messageHandler.send("Ready", null);
         rendererHandler.send("Ready", null);
-        // rendererHandler.send("Ready", { port: workerChannel.port1 }, [
-        //   workerChannel.port1,
-        // ]);
-        // messageHandler.send("Ready", { port: workerChannel.port2 }, [
-        //   workerChannel.port2,
-        // ]);
       });
     })
     .catch(task._capability.reject);
@@ -1638,7 +1632,6 @@ class PDFPageProxy {
       pageColors,
       displayWorker: this._transport.displayWorker,
       rendererMessageHandler: this._transport.rendererMessageHandler,
-      internalRenderTaskMap: this._transport.internalRenderTaskMap,
     });
 
     (intentState.renderTasks ||= new Set()).add(internalRenderTask);
@@ -2489,7 +2482,9 @@ class WorkerTransport {
     rendererMessageHandler
   ) {
     this.messageHandler = messageHandler;
+    this.rendererMessageHandler = rendererMessageHandler;
     this.loadingTask = loadingTask;
+    this.commonObjs = new PDFObjects();
     this.fontLoader = new FontLoader({
       ownerDocument: params.ownerDocument,
       styleElement: params.styleElement,
@@ -2502,19 +2497,6 @@ class WorkerTransport {
     this.cMapReaderFactory = factory.cMapReaderFactory;
     this.standardFontDataFactory = factory.standardFontDataFactory;
     this.wasmFactory = factory.wasmFactory;
-
-    this.rendererMessageHandler = rendererMessageHandler;
-
-    this.commonObjs = new PDFObjects();
-    this.internalRenderTaskMap = new Map();
-    this.rendererMessageHandler.on(
-      "renderComplete",
-      ({ pageIndex, bitmap, operatorListIdx }) => {
-        this.internalRenderTaskMap
-          .get(pageIndex)
-          .finalizeRender(operatorListIdx, bitmap);
-      }
-    );
 
     this.destroyed = false;
     this.destroyCapability = null;
@@ -2865,11 +2847,6 @@ class WorkerTransport {
     });
 
     messageHandler.on("commonobj", ([id, type, exportedData]) => {
-      this.rendererMessageHandler.send("commonobj", {
-        id,
-        type,
-        exportedData,
-      });
       if (this.destroyed) {
         return null; // Ignore any pending requests if the worker was terminated.
       }
@@ -2938,12 +2915,6 @@ class WorkerTransport {
     });
 
     messageHandler.on("obj", ([id, pageIndex, type, imageData]) => {
-      this.rendererMessageHandler.send("obj", {
-        id,
-        pageIndex,
-        type,
-        exportedData: imageData,
-      });
       if (this.destroyed) {
         // Ignore any pending requests if the worker was terminated.
         return;
@@ -3312,7 +3283,6 @@ class InternalRenderTask {
     pageColors = null,
     displayWorker,
     rendererMessageHandler,
-    internalRenderTaskMap,
   }) {
     this.callback = callback;
     this.params = params;
@@ -3343,48 +3313,6 @@ class InternalRenderTask {
     this._canvas = params.canvasContext.canvas;
     this.displayWorker = displayWorker;
     this.rendererMessageHandler = rendererMessageHandler;
-    this.internalRenderTaskMap = internalRenderTaskMap;
-
-    // _handleWorkerMessage(optionalContentConfig, event) {
-    // console.log("WORKER MESSAGE", event.data);
-    //   const { type, bitmap, signal } = event.data;
-    //   switch (type) {
-    //     case "renderComplete":
-    //       const { fOperatorListIdx } = event.data;
-    //       this.operatorListIdx = fOperatorListIdx;
-    //       if (this.operatorListIdx === this.operatorList.argsArray.length) {
-    //         this.running = false;
-    //         if (this.operatorList.lastChunk) {
-    //           this.displayWorker.postMessage({
-    //             type: "end",
-    //             pageIndex: this._pageIndex,
-    //           });
-    //           InternalRenderTask.#canvasInUse.delete(this._canvas);
-
-    //           this.callback();
-    //         }
-    //       }
-    //       // console.log("HERE MAGIC HAPPENS", bitmap);
-    //       // console.log(this.params.canvasContext);
-    //       this.params.canvasContext.drawImage(bitmap, 0, 0);
-    //       bitmap.close();
-    //       break;
-    //     case "isVisible":
-    //       const { group } = event.data;
-    //       Atomics.store(
-    //         signal,
-    //         0,
-    //         optionalContentConfig.isVisible(group) ? 1 : -1
-    //       );
-    //       Atomics.notify(signal, 0);
-    //       break;
-    //     case "continue":
-    //       this._continueBound(this);
-    //       Atomics.store(signal, 0, 1);
-    //       Atomics.notify(signal, 0);
-    //       break;
-    //   }
-    // }
   }
 
   get completed() {
@@ -3502,29 +3430,29 @@ class InternalRenderTask {
     if (this.cancelled) {
       return;
     }
-    this.rendererMessageHandler.send("render", {
-      operatorList: this.operatorList,
-      operatorListIdx: this.operatorListIdx,
-      stepper: this.stepper,
-      pageIndex: this._pageIndex,
-    });
-    this.internalRenderTaskMap.set(this._pageIndex, this);
-  }
-
-  finalizeRender(operatorListIdx, bitmap) {
-    this.operatorListIdx = operatorListIdx;
-    if (this.operatorListIdx === this.operatorList.argsArray.length) {
-      this.running = false;
-      if (this.operatorList.lastChunk) {
-        this.rendererMessageHandler.send("end", {
-          pageIndex: this._pageIndex,
-        });
-        InternalRenderTask.#canvasInUse.delete(this._canvas);
-        this.callback();
-      }
-    }
-    this.params.canvasContext.drawImage(bitmap, 0, 0);
-    bitmap.close();
+    this.rendererMessageHandler
+      .sendWithPromise("render", {
+        operatorList: this.operatorList,
+        operatorListIdx: this.operatorListIdx,
+        stepper: this.stepper,
+        pageIndex: this._pageIndex,
+      })
+      .then(([operatorListIdx, bitmap]) => {
+        console.log("RENDERED", operatorListIdx, bitmap);
+        this.operatorListIdx = operatorListIdx;
+        if (this.operatorListIdx === this.operatorList.argsArray.length) {
+          this.running = false;
+          if (this.operatorList.lastChunk) {
+            this.rendererMessageHandler.send("end", {
+              pageIndex: this._pageIndex,
+            });
+            InternalRenderTask.#canvasInUse.delete(this._canvas);
+            this.callback();
+          }
+        }
+        this.params.canvasContext.drawImage(bitmap, 0, 0);
+        bitmap.close();
+      });
   }
 }
 
