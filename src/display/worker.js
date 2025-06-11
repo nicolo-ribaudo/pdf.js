@@ -24,7 +24,7 @@ class RendererMessageHandler {
     mainHandler.send("ready", null);
 
     mainHandler.on("Ready", function () {
-      console.log("RendererMessageHandler is ready");
+      // DO NOTHING
     });
 
     mainHandler.on("configure", ({ channelPort }) => {
@@ -39,10 +39,6 @@ class RendererMessageHandler {
       workerHandler.on("obj", ([id, pageIndex, type, data]) => {
         handleObj(pageIndex, id, type, data);
       });
-      workerHandler.on("Ready", function () {
-        console.log("Renderer is ready (FROM WORKER)");
-      });
-      workerHandler.send("Ready", null);
     });
 
     mainHandler.on(
@@ -62,7 +58,7 @@ class RendererMessageHandler {
           pageObjs,
           new OffscreenCanvasFactory({ enableHWA }),
           null,
-          { isVisible },
+          {},
           map,
           colors
         );
@@ -72,22 +68,15 @@ class RendererMessageHandler {
     );
     mainHandler.on(
       "render",
-      async ({ pageIndex, operatorList, operatorListIdx, stepper }) => {
-        console.log(
-          "RENDER PAGE",
-          pageIndex,
-          operatorList,
-          operatorListIdx,
-          stepper
-        );
+      async ({ pageIndex, operatorList, operatorListIdx }) => {
+        console.log("RENDER PAGE", pageIndex, operatorList, operatorListIdx);
         const page = pages.get(pageIndex);
         assert(page !== undefined, "Page not initialized");
         const { canvas, gfx } = page;
         const fOperatorListIdx = gfx.executeOperatorList(
           operatorList,
           operatorListIdx,
-          continueFn,
-          stepper
+          () => continueFn(pageIndex)
         );
         const bitmap = await canvas.transferToImageBitmap();
         return [fOperatorListIdx, bitmap];
@@ -98,16 +87,6 @@ class RendererMessageHandler {
       assert(page !== undefined, "Page not initialized");
       const { gfx: eGfx } = page;
       eGfx.endDrawing();
-    });
-    mainHandler.on("isVisible", ({ group, signal }) => {
-      const visible = isVisible(group);
-      signal[0] = visible ? 1 : 0;
-      Atomics.notify(signal, 0, 1);
-    });
-    mainHandler.on("continue", ({ signal }) => {
-      continueFn();
-      signal[0] = 1;
-      Atomics.notify(signal, 0, 1);
     });
   }
 }
@@ -208,28 +187,6 @@ class Page {
 
 const pages = new Map();
 
-// TODO: this is a semi hack that blocks the worker for this operation. Ideally
-// we should use a promise and resolve it when the main thread sends the
-// isVisible message back. This would allow us to use the worker for other
-// operations while waiting for the isVisible message to be sent back.
-function isVisible(group) {
-  const signal = new Int32Array(new SharedArrayBuffer(4));
-  signal[0] = 0;
-  mainHandler.send("isVisible", {
-    signal,
-    group,
-  });
-  Atomics.wait(signal, 0, 0);
-  const visible = signal[0] === 1;
-  return visible;
-}
-
-function continueFn() {
-  const signal = new Int32Array(new SharedArrayBuffer(4));
-  signal[0] = 0;
-  self.postMessage({
-    signal,
-    type: "continue",
-  });
-  Atomics.wait(signal, 0, 0);
+function continueFn(pageIndex) {
+  mainHandler.send("continue", { pageIndex });
 }

@@ -101,10 +101,6 @@ class WorkerMessageHandler {
         "renderer-channel",
         data.channelPort
       );
-      rendererHandler.on("Ready", () => {
-        console.log("Worker is ready (FROM RENDERER)");
-      });
-      rendererHandler.send("Ready", null);
     });
 
     handler.on("GetDocRequest", data =>

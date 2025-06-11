@@ -87,10 +87,10 @@ class MessageHandler {
     this.callbackCapabilities = Object.create(null);
     this.actionHandler = Object.create(null);
 
-    // comObj.addEventListener("message", this.#onMessage.bind(this), {
-    //   signal: this.#messageAC.signal,
-    // });
-    comObj.onmessage = this.#onMessage.bind(this);
+    comObj.addEventListener("message", this.#onMessage.bind(this), {
+      signal: this.#messageAC.signal,
+    });
+    comObj.start?.();
   }
 
   #onMessage({ data }) {

@@ -808,16 +808,6 @@ class PDFObjects {
       yield [objId, data];
     }
   }
-
-  toJSON() {
-    return this.#objs;
-  }
-
-  static fromJSON(data) {
-    const instance = new PDFObjects();
-    instance.#objs = data;
-    return instance;
-  }
 }
 
 export {
