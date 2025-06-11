@@ -111,8 +111,8 @@ class BasePdfManager {
     return this.pdfDocument.getPage(pageIndex);
   }
 
-  fontFallback(id, handler, rendererHandler) {
-    return this.pdfDocument.fontFallback(id, handler, rendererHandler);
+  fontFallback(id, handler) {
+    return this.pdfDocument.fontFallback(id, handler);
   }
 
   cleanup(manuallyTriggered = false) {

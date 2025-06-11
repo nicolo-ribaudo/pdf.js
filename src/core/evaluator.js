@@ -1052,8 +1052,7 @@ class PartialEvaluator {
           font,
           glyphs,
           this.handler,
-          this.options,
-          this.rendererHandler
+          this.options
         );
       }
     }
@@ -4613,24 +4612,13 @@ class PartialEvaluator {
     return new Font(fontName.name, fontFile, newProperties, this.options);
   }
 
-  static buildFontPaths(
-    font,
-    glyphs,
-    handler,
-    evaluatorOptions,
-    rendererHandler
-  ) {
+  static buildFontPaths(font, glyphs, handler, evaluatorOptions) {
     function buildPath(fontChar) {
       const glyphName = `${font.loadedName}_path_${fontChar}`;
       try {
         if (font.renderer.hasBuiltPath(fontChar)) {
           return;
         }
-        rendererHandler.send("commonobj", [
-          glyphName,
-          "FontPath",
-          font.renderer.getPathJs(fontChar),
-        ]);
         handler.send("commonobj", [
           glyphName,
           "FontPath",
@@ -4698,7 +4686,7 @@ class TranslatedFont {
     ]);
   }
 
-  fallback(handler, evaluatorOptions, rendererHandler) {
+  fallback(handler, evaluatorOptions) {
     if (!this.font.data) {
       return;
     }
@@ -4714,8 +4702,7 @@ class TranslatedFont {
       this.font,
       /* glyphs = */ this.font.glyphCacheValues,
       handler,
-      evaluatorOptions,
-      rendererHandler
+      evaluatorOptions
     );
   }
 

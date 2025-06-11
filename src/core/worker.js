@@ -819,12 +819,11 @@ class WorkerMessageHandler {
     });
 
     rendererHandler.on("FontFallback", function (data) {
-      console.log("RENDERER IS CALLING FontFallback", data.id);
-      return pdfManager.fontFallback(data.id, handler, rendererHandler);
+      return pdfManager.fontFallback(data.id, rendererHandler);
     });
 
     handler.on("FontFallback", function (data) {
-      return pdfManager.fontFallback(data.id, handler, rendererHandler);
+      return pdfManager.fontFallback(data.id, handler);
     });
 
     handler.on("Cleanup", function (data) {

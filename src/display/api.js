@@ -1630,7 +1630,6 @@ class PDFPageProxy {
       useRequestAnimationFrame: !intentPrint,
       pdfBug: this._pdfBug,
       pageColors,
-      displayWorker: this._transport.displayWorker,
       rendererHandler: this._transport.rendererHandler,
       continueFnMap: this._transport.continueFnMap,
     });
@@ -3035,8 +3034,7 @@ class WorkerTransport {
           pageIndex,
           pageInfo,
           this,
-          this._params.pdfBug,
-          this.displayWorker
+          this._params.pdfBug
         );
         this.#pageCache.set(pageIndex, page);
         return page;
@@ -3289,7 +3287,6 @@ class InternalRenderTask {
     useRequestAnimationFrame = false,
     pdfBug = false,
     pageColors = null,
-    displayWorker,
     rendererHandler,
     continueFnMap = null,
   }) {
@@ -3320,7 +3317,6 @@ class InternalRenderTask {
     this._scheduleNextBound = this._scheduleNext.bind(this);
     this._nextBound = this._next.bind(this);
     this._canvas = params.canvasContext.canvas;
-    this.displayWorker = displayWorker;
     this.rendererHandler = rendererHandler;
     this.continueFnMap = continueFnMap;
   }
