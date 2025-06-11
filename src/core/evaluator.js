@@ -554,7 +554,6 @@ class PartialEvaluator {
     const transfers = imgData ? [imgData.bitmap || imgData.data.buffer] : null;
 
     if (this.parsingType3Font || cacheGlobally) {
-      console.log(this.rendererHandler);
       this.rendererHandler.send(
         "commonobj",
         [objId, "Image", imgData],
@@ -566,6 +565,11 @@ class PartialEvaluator {
         transfers
       );
     }
+    this.rendererHandler.send(
+      "obj",
+      [objId, this.pageIndex, "Image", imgData],
+      transfers
+    );
     return this.handler.send(
       "obj",
       [objId, this.pageIndex, "Image", imgData],
@@ -1048,7 +1052,8 @@ class PartialEvaluator {
           font,
           glyphs,
           this.handler,
-          this.options
+          this.options,
+          this.rendererHandler
         );
       }
     }
@@ -1523,7 +1528,6 @@ class PartialEvaluator {
     }
     localShadingPatternCache.set(shading, id);
 
-    console.log(this.rendererHandler);
     if (this.parsingType3Font) {
       this.rendererHandler.send("commonobj", [id, "Pattern", patternIR]);
       this.handler.send("commonobj", [id, "Pattern", patternIR]);
@@ -4609,13 +4613,24 @@ class PartialEvaluator {
     return new Font(fontName.name, fontFile, newProperties, this.options);
   }
 
-  static buildFontPaths(font, glyphs, handler, evaluatorOptions) {
+  static buildFontPaths(
+    font,
+    glyphs,
+    handler,
+    evaluatorOptions,
+    rendererHandler
+  ) {
     function buildPath(fontChar) {
       const glyphName = `${font.loadedName}_path_${fontChar}`;
       try {
         if (font.renderer.hasBuiltPath(fontChar)) {
           return;
         }
+        rendererHandler.send("commonobj", [
+          glyphName,
+          "FontPath",
+          font.renderer.getPathJs(fontChar),
+        ]);
         handler.send("commonobj", [
           glyphName,
           "FontPath",
@@ -4671,7 +4686,6 @@ class TranslatedFont {
     }
     this.#sent = true;
 
-    console.log(rendererHandler);
     handler.send("commonobj", [
       this.loadedName,
       "Font",

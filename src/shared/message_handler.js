@@ -87,12 +87,14 @@ class MessageHandler {
     this.callbackCapabilities = Object.create(null);
     this.actionHandler = Object.create(null);
 
-    comObj.addEventListener("message", this.#onMessage.bind(this), {
-      signal: this.#messageAC.signal,
-    });
+    // comObj.addEventListener("message", this.#onMessage.bind(this), {
+    //   signal: this.#messageAC.signal,
+    // });
+    comObj.onmessage = this.#onMessage.bind(this);
   }
 
   #onMessage({ data }) {
+    // console.log("HANDLER", data);
     if (data.targetName !== this.sourceName) {
       return;
     }
@@ -176,6 +178,7 @@ class MessageHandler {
    * @param {Array} [transfers] - List of transfers/ArrayBuffers.
    */
   send(actionName, data, transfers) {
+    // console.log("HANDLER SEND", actionName, this.sourceName, this.targetName, data);
     this.comObj.postMessage(
       {
         sourceName: this.sourceName,

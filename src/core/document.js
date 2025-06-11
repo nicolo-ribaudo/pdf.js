@@ -1754,12 +1754,16 @@ class PDFDocument {
     }
   }
 
-  async fontFallback(id, handler) {
+  async fontFallback(id, handler, rendererHandler) {
     const { catalog, pdfManager } = this;
 
     for (const translatedFont of await Promise.all(catalog.fontCache)) {
       if (translatedFont.loadedName === id) {
-        translatedFont.fallback(handler, pdfManager.evaluatorOptions);
+        translatedFont.fallback(
+          handler,
+          pdfManager.evaluatorOptions,
+          rendererHandler
+        );
         return;
       }
     }

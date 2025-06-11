@@ -33,19 +33,18 @@ class RendererMessageHandler {
         "worker-channel",
         channelPort
       );
-      // workerHandler.on("commonobj", ({ id, type, exportedData }) => {
-      //   console.log("DIRECTLY GOT A COMMON OBJ", id, type, exportedData);
-      //   handleCommonObj(id, type, exportedData);
-      // });
-      // workerHandler.on("obj", ({ pageIndex, id, type, exportedData }) => {
-      //   console.log("DIRECTLY GOT AN OBJ", pageIndex, id, type, exportedData);
-      //   handleObj(pageIndex, id, type, exportedData);
-      // });
+      workerHandler.on("commonobj", ({ id, type, exportedData }) => {
+        console.log("DIRECTLY GOT A COMMON OBJ", id, type, exportedData);
+        handleCommonObj(id, type, exportedData);
+      });
+      workerHandler.on("obj", ({ pageIndex, id, type, exportedData }) => {
+        console.log("DIRECTLY GOT AN OBJ", pageIndex, id, type, exportedData);
+        handleObj(pageIndex, id, type, exportedData);
+      });
       workerHandler.on("Ready", function () {
         console.log("Renderer is ready (FROM WORKER)");
       });
       workerHandler.send("Ready", null);
-      console.log(workerHandler);
     });
 
     mainHandler.on("commonobj", ({ id, type, exportedData }) => {
@@ -117,15 +116,6 @@ class RendererMessageHandler {
       signal[0] = 1;
       Atomics.notify(signal, 0, 1);
     });
-    // mainHandler.send("SETUP", null);
-    // mainHandler.on("SETUP", () => console.log("SETUP DONE"));
-    // mainHandler.send("Ready", null);
-    // mainHandler.on("Ready", function () {
-    //   console.log("Renderer is ready (FROM MAIN)");
-    // });
-    // mainHandler.send("rendererReady", null);
-    // console.log("RendererMessageHandler initialized");
-    // return mainHandler;
   }
 }
 

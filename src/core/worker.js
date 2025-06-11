@@ -103,9 +103,8 @@ class WorkerMessageHandler {
       );
       rendererHandler.on("Ready", () => {
         console.log("Worker is ready (FROM RENDERER)");
-        rendererHandler.send("Ready", null);
       });
-      console.log(rendererHandler);
+      rendererHandler.send("Ready", null);
     });
 
     handler.on("GetDocRequest", data =>
@@ -824,7 +823,7 @@ class WorkerMessageHandler {
     });
 
     handler.on("FontFallback", function (data) {
-      return pdfManager.fontFallback(data.id, handler);
+      return pdfManager.fontFallback(data.id, handler, rendererHandler);
     });
 
     handler.on("Cleanup", function (data) {
