@@ -221,6 +221,7 @@ class PartialEvaluator {
   constructor({
     xref,
     handler,
+    rendererHandler,
     pageIndex,
     idFactory,
     fontCache,
@@ -233,6 +234,7 @@ class PartialEvaluator {
   }) {
     this.xref = xref;
     this.handler = handler;
+    this.rendererHandler = rendererHandler;
     this.pageIndex = pageIndex;
     this.idFactory = idFactory;
     this.fontCache = fontCache;
@@ -552,13 +554,19 @@ class PartialEvaluator {
     const transfers = imgData ? [imgData.bitmap || imgData.data.buffer] : null;
 
     if (this.parsingType3Font || cacheGlobally) {
-      return this.handler.send(
+      this.handler.send("commonobj", [objId, "Image", imgData], transfers);
+      return this.rendererHandler.send(
         "commonobj",
         [objId, "Image", imgData],
         transfers
       );
     }
-    return this.handler.send(
+    this.handler.send(
+      "obj",
+      [objId, this.pageIndex, "Image", imgData],
+      transfers
+    );
+    return this.rendererHandler.send(
       "obj",
       [objId, this.pageIndex, "Image", imgData],
       transfers
@@ -786,11 +794,10 @@ class PartialEvaluator {
       // globally, check if the image is still cached locally on the main-thread
       // to avoid having to re-parse the image (since that can be slow).
       if (w * h > 250000 || hasMask) {
-        const localLength = await this.handler.sendWithPromise("commonobj", [
-          objId,
-          "CopyLocalImage",
-          { imageRef },
-        ]);
+        const localLength = await this.rendererHandler.sendWithPromise(
+          "commonobj",
+          [objId, "CopyLocalImage", { imageRef }]
+        );
 
         if (localLength) {
           this.globalImageCache.setData(imageRef, globalCacheData);
@@ -1020,6 +1027,7 @@ class PartialEvaluator {
 
     state.font = translated.font;
     translated.send(this.handler);
+    translated.send(this.rendererHandler);
     return translated.loadedName;
   }
 
@@ -1039,7 +1047,7 @@ class PartialEvaluator {
         PartialEvaluator.buildFontPaths(
           font,
           glyphs,
-          this.handler,
+          this.rendererHandler,
           this.options
         );
       }
@@ -1517,8 +1525,15 @@ class PartialEvaluator {
 
     if (this.parsingType3Font) {
       this.handler.send("commonobj", [id, "Pattern", patternIR]);
+      this.rendererHandler.send("commonobj", [id, "Pattern", patternIR]);
     } else {
       this.handler.send("obj", [id, this.pageIndex, "Pattern", patternIR]);
+      this.rendererHandler.send("obj", [
+        id,
+        this.pageIndex,
+        "Pattern",
+        patternIR,
+      ]);
     }
     return id;
   }
@@ -2362,6 +2377,7 @@ class PartialEvaluator {
     disableNormalization = false,
     keepWhiteSpace = false,
     prevRefs = null,
+    intersector = null,
   }) {
     const objId = stream.dict?.objId;
     const seenRefs = new RefSet(prevRefs);
@@ -2506,6 +2522,7 @@ class PartialEvaluator {
       transform = textContentItem.prevTransform,
       fontName = textContentItem.fontName,
     }) {
+      intersector?.addExtraChar(" ");
       textContent.items.push({
         str: " ",
         dir: "ltr",
@@ -2743,7 +2760,7 @@ class PartialEvaluator {
           // This is not a 0, 90, 180, 270 rotation so:
           //  - remove the scale factor from the matrix to get a rotation matrix
           //  - apply the inverse (which is the transposed) to the positions
-          // and we can then compare positions of the glyphes to detect
+          // and we can then compare positions of the glyphs to detect
           // a whitespace.
           [posX, posY] = applyInverseRotation(posX, posY, currentTransform);
           [lastPosX, lastPosY] = applyInverseRotation(
@@ -2964,9 +2981,21 @@ class PartialEvaluator {
 
         if (!font.vertical) {
           scaledDim *= textState.textHScale;
+          intersector?.addGlyph(
+            getCurrentTextTransform(),
+            scaledDim,
+            0,
+            glyph.unicode
+          );
           textState.translateTextMatrix(scaledDim, 0);
           textChunk.width += scaledDim;
         } else {
+          intersector?.addGlyph(
+            getCurrentTextTransform(),
+            0,
+            scaledDim,
+            glyph.unicode
+          );
           textState.translateTextMatrix(0, scaledDim);
           scaledDim = Math.abs(scaledDim);
           textChunk.height += scaledDim;
@@ -2985,8 +3014,12 @@ class PartialEvaluator {
           // alignment issues between the textLayer and the canvas if the text
           // contains e.g. tabs (fixes issue6612.pdf).
           textChunk.str.push(" ");
+          intersector?.addExtraChar(" ");
         }
-        textChunk.str.push(glyphUnicode);
+
+        if (!intersector) {
+          textChunk.str.push(glyphUnicode);
+        }
 
         if (charSpacing) {
           if (!font.vertical) {
@@ -3002,6 +3035,7 @@ class PartialEvaluator {
     }
 
     function appendEOL() {
+      intersector?.addExtraChar("\n");
       resetLastChars();
       if (textContentItem.initialized) {
         textContentItem.hasEOL = true;
@@ -3027,6 +3061,7 @@ class PartialEvaluator {
         if (textContentItem.initialized) {
           resetLastChars();
           textContentItem.str.push(" ");
+          intersector?.addExtraChar(" ");
         }
         return false;
       }
@@ -3078,7 +3113,7 @@ class PartialEvaluator {
       if (batch && length < TEXT_CHUNK_BATCH_SIZE) {
         return;
       }
-      sink.enqueue(textContent, length);
+      sink?.enqueue(textContent, length);
       textContent.items = [];
       textContent.styles = Object.create(null);
     }
@@ -3088,7 +3123,7 @@ class PartialEvaluator {
     return new Promise(function promiseBody(resolve, reject) {
       const next = function (promise) {
         enqueueChunk(/* batch = */ true);
-        Promise.all([promise, sink.ready]).then(function () {
+        Promise.all([promise, sink?.ready]).then(function () {
           try {
             promiseBody(resolve, reject);
           } catch (ex) {
@@ -3341,7 +3376,7 @@ class PartialEvaluator {
                   },
 
                   get desiredSize() {
-                    return sink.desiredSize;
+                    return sink.desiredSize ?? 0;
                   },
 
                   get ready() {
@@ -3359,7 +3394,7 @@ class PartialEvaluator {
                         : resources,
                     stateManager: xObjStateManager,
                     includeMarkedContent,
-                    sink: sinkWrapper,
+                    sink: sink && sinkWrapper,
                     seenStyles,
                     viewBox,
                     lang,
@@ -3499,7 +3534,7 @@ class PartialEvaluator {
             }
             break;
         } // switch
-        if (textContent.items.length >= sink.desiredSize) {
+        if (textContent.items.length >= (sink?.desiredSize ?? 1)) {
           // Wait for ready, if we reach highWaterMark.
           stop = true;
           break;
@@ -3803,7 +3838,7 @@ class PartialEvaluator {
     // According to the spec if the font is a simple font we should only map
     // to unicode if the base encoding is MacRoman, MacExpert, or WinAnsi or
     // the differences array only contains adobe standard or symbol set names,
-    // in pratice it seems better to always try to create a toUnicode map
+    // in practice it seems better to always try to create a toUnicode map
     // based of the default encoding.
     if (!properties.composite /* is simple font */) {
       return new ToUnicodeMap(this._simpleFontToUnicode(properties));

@@ -1092,6 +1092,9 @@ function isArrayEqual(arr1, arr2) {
 }
 
 function getModificationDate(date = new Date()) {
+  if (!(date instanceof Date)) {
+    date = new Date(date);
+  }
   const buffer = [
     date.getUTCFullYear().toString(),
     (date.getUTCMonth() + 1).toString().padStart(2, "0"),
@@ -1185,7 +1188,7 @@ function _isValidExplicitDest(validRef, validName, dest) {
   return true;
 }
 
-// TOOD: Replace all occurrences of this function with `Math.clamp` once
+// TODO: Replace all occurrences of this function with `Math.clamp` once
 //       https://github.com/tc39/proposal-math-clamp/ is generally available.
 function MathClamp(v, min, max) {
   return Math.min(Math.max(v, min), max);

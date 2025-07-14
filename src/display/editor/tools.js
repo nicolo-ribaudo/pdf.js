@@ -676,6 +676,8 @@ class AnnotationEditorUIManager {
 
   #viewer = null;
 
+  #viewerAlert = null;
+
   #updateModeCapability = null;
 
   static TRANSLATE_SMALL = 1; // page units.
@@ -818,6 +820,7 @@ class AnnotationEditorUIManager {
   constructor(
     container,
     viewer,
+    viewerAlert,
     altTextManager,
     signatureManager,
     eventBus,
@@ -834,6 +837,7 @@ class AnnotationEditorUIManager {
     const signal = (this._signal = this.#abortController.signal);
     this.#container = container;
     this.#viewer = viewer;
+    this.#viewerAlert = viewerAlert;
     this.#altTextManager = altTextManager;
     this.#signatureManager = signatureManager;
     this._eventBus = eventBus;
@@ -957,9 +961,11 @@ class AnnotationEditorUIManager {
       "highlightColors",
       this.#highlightColors
         ? new Map(
-            this.#highlightColors
-              .split(",")
-              .map(pair => pair.split("=").map(x => x.trim()))
+            this.#highlightColors.split(",").map(pair => {
+              pair = pair.split("=").map(x => x.trim());
+              pair[1] = pair[1].toUpperCase();
+              return pair;
+            })
           )
         : null
     );
@@ -1170,6 +1176,19 @@ class AnnotationEditorUIManager {
       !this.#annotationStorage.has(editor.id)
     ) {
       this.#annotationStorage.setValue(editor.id, editor);
+    }
+  }
+
+  a11yAlert(messageId, args = null) {
+    const viewerAlert = this.#viewerAlert;
+    if (!viewerAlert) {
+      return;
+    }
+    viewerAlert.setAttribute("data-l10n-id", messageId);
+    if (args) {
+      viewerAlert.setAttribute("data-l10n-args", JSON.stringify(args));
+    } else {
+      viewerAlert.removeAttribute("data-l10n-args");
     }
   }
 
@@ -1665,8 +1684,15 @@ class AnnotationEditorUIManager {
    * @param {string|null} editId
    * @param {boolean} [isFromKeyboard] - true if the mode change is due to a
    *   keyboard action.
+   * @param {boolean} [mustEnterInEditMode] - true if the editor must enter in
+   *   edit mode.
    */
-  async updateMode(mode, editId = null, isFromKeyboard = false) {
+  async updateMode(
+    mode,
+    editId = null,
+    isFromKeyboard = false,
+    mustEnterInEditMode = false
+  ) {
     if (this.#mode === mode) {
       return;
     }
@@ -1713,7 +1739,9 @@ class AnnotationEditorUIManager {
     for (const editor of this.#allEditors.values()) {
       if (editor.annotationElementId === editId || editor.id === editId) {
         this.setSelected(editor);
-        editor.enterInEditMode();
+        if (mustEnterInEditMode) {
+          editor.enterInEditMode();
+        }
       } else {
         editor.unselect();
       }
@@ -2017,6 +2045,11 @@ class AnnotationEditorUIManager {
    * @param {AnnotationEditor} editor
    */
   setSelected(editor) {
+    this.updateToolbar({
+      mode: editor.mode,
+      editId: editor.id,
+    });
+
     this.#currentDrawingSession?.commitOrRemove();
     for (const ed of this.#selectedEditors) {
       if (ed !== editor) {

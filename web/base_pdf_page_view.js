@@ -17,8 +17,6 @@ import { RenderingCancelledException } from "pdfjs-lib";
 import { RenderingStates } from "./ui_utils.js";
 
 class BasePDFPageView {
-  #enableHWA = false;
-
   #loadingId = null;
 
   #minDurationToUpdateCanvas = 0;
@@ -48,11 +46,11 @@ class BasePDFPageView {
 
   renderTask = null;
 
+  renderTaskID = null;
+
   resume = null;
 
   constructor(options) {
-    this.#enableHWA =
-      #enableHWA in options ? options.#enableHWA : options.enableHWA || false;
     this.eventBus = options.eventBus;
     this.id = options.id;
     this.pageColors = options.pageColors || null;
@@ -110,7 +108,8 @@ class BasePDFPageView {
     // In HCM, a final filter is applied on the canvas which means that
     // before it's applied we've normal colors. Consequently, to avoid to
     // have a final flash we just display it once all the drawing is done.
-    const updateOnFirstShow = !prevCanvas && !hasHCM && !hideUntilComplete;
+    // const updateOnFirstShow = !prevCanvas && !hasHCM && !hideUntilComplete;
+    const updateOnFirstShow = false;
 
     let canvas = (this.canvas = document.createElement("canvas"));
 
@@ -160,18 +159,13 @@ class BasePDFPageView {
 
       if (prevCanvas) {
         prevCanvas.replaceWith(canvas);
-        prevCanvas.width = prevCanvas.height = 0;
+        this.pdfPage.resetCanvas(this.renderTaskID);
       } else {
         onShow(canvas);
       }
     };
 
-    const ctx = canvas.getContext("2d", {
-      alpha: false,
-      willReadFrequently: !this.#enableHWA,
-    });
-
-    return { canvas, prevCanvas, ctx };
+    return { canvas, prevCanvas };
   }
 
   #renderContinueCallback = cont => {
@@ -193,7 +187,7 @@ class BasePDFPageView {
       return;
     }
     canvas.remove();
-    canvas.width = canvas.height = 0;
+    this.pdfPage.resetCanvas(this.renderTaskID);
     this.canvas = null;
     this.#resetTempCanvas();
   }
@@ -214,6 +208,8 @@ class BasePDFPageView {
         this.#renderError = null;
       }
     };
+
+    this.renderTaskID = renderTask.taskID;
 
     let error = null;
     try {

@@ -66,6 +66,7 @@ import { calculateMD5 } from "./calculate_md5.js";
 import { Catalog } from "./catalog.js";
 import { clearGlobalCaches } from "./cleanup_helper.js";
 import { DatasetReader } from "./dataset_reader.js";
+import { Intersector } from "./intersector.js";
 import { Linearization } from "./parser.js";
 import { NullStream } from "./stream.js";
 import { ObjectLoader } from "./object_loader.js";
@@ -126,10 +127,11 @@ class Page {
     };
   }
 
-  #createPartialEvaluator(handler) {
+  #createPartialEvaluator(handler, rendererHandler) {
     return new PartialEvaluator({
       xref: this.xref,
       handler,
+      rendererHandler,
       pageIndex: this.pageIndex,
       idFactory: this._localIdFactory,
       fontCache: this.fontCache,
@@ -309,6 +311,12 @@ class Page {
           }
           continue;
         }
+        if (annotation.popup?.deleted) {
+          const popupRef = Ref.fromString(annotation.popupRef);
+          if (popupRef) {
+            deletedAnnotations.put(popupRef, popupRef);
+          }
+        }
         existingAnnotations?.put(ref);
         annotation.ref = ref;
         promises.push(
@@ -429,6 +437,7 @@ class Page {
 
   async getOperatorList({
     handler,
+    rendererHandler,
     sink,
     task,
     intent,
@@ -439,7 +448,10 @@ class Page {
     const contentStreamPromise = this.getContentStream();
     const resourcesPromise = this.loadResources(RESOURCES_KEYS_OPERATOR_LIST);
 
-    const partialEvaluator = this.#createPartialEvaluator(handler);
+    const partialEvaluator = this.#createPartialEvaluator(
+      handler,
+      rendererHandler
+    );
 
     const newAnnotsByPage = !this.xfaFactory
       ? getNewAnnotationsMap(annotationStorage)
@@ -632,6 +644,7 @@ class Page {
     includeMarkedContent,
     disableNormalization,
     sink,
+    intersector = null,
   }) {
     const contentStreamPromise = this.getContentStream();
     const resourcesPromise = this.loadResources(RESOURCES_KEYS_TEXT_CONTENT);
@@ -658,6 +671,7 @@ class Page {
       sink,
       viewBox: this.view,
       lang,
+      intersector,
     });
   }
 
@@ -707,6 +721,8 @@ class Page {
       intentDisplay = !!(intent & RenderingIntentFlag.DISPLAY),
       intentPrint = !!(intent & RenderingIntentFlag.PRINT);
 
+    const highlightedAnnotations = [];
+
     for (const annotation of annotations) {
       // Get the annotation even if it's hidden because
       // JS can change its display.
@@ -732,7 +748,27 @@ class Page {
               );
             })
         );
+      } else if (annotation.overlaysTextContent && isVisible) {
+        highlightedAnnotations.push(annotation);
       }
+    }
+
+    if (highlightedAnnotations.length > 0) {
+      const intersector = new Intersector(highlightedAnnotations);
+      textContentPromises.push(
+        this.extractTextContent({
+          handler,
+          task,
+          includeMarkedContent: false,
+          disableNormalization: false,
+          sink: null,
+          viewBox: this.view,
+          lang: null,
+          intersector,
+        }).then(() => {
+          intersector.setText();
+        })
+      );
     }
 
     await Promise.all(textContentPromises);
@@ -1074,6 +1110,49 @@ class PDFDocument {
     });
   }
 
+  #collectSignatureCertificates(
+    fields,
+    collectedSignatureCertificates,
+    visited = new RefSet()
+  ) {
+    if (!Array.isArray(fields)) {
+      return;
+    }
+    for (let field of fields) {
+      if (field instanceof Ref) {
+        if (visited.has(field)) {
+          continue;
+        }
+        visited.put(field);
+      }
+      field = this.xref.fetchIfRef(field);
+      if (!(field instanceof Dict)) {
+        continue;
+      }
+      if (field.has("Kids")) {
+        this.#collectSignatureCertificates(
+          field.get("Kids"),
+          collectedSignatureCertificates,
+          visited
+        );
+        continue;
+      }
+      const isSignature = isName(field.get("FT"), "Sig");
+      if (!isSignature) {
+        continue;
+      }
+      const value = field.get("V");
+      if (!(value instanceof Dict)) {
+        continue;
+      }
+      const subFilter = value.get("SubFilter");
+      if (!(subFilter instanceof Name)) {
+        continue;
+      }
+      collectedSignatureCertificates.add(subFilter.name);
+    }
+  }
+
   get _xfaStreams() {
     const { acroForm } = this.catalog;
     if (!acroForm) {
@@ -1195,7 +1274,7 @@ class PDFDocument {
     this.xfaFactory.setImages(xfaImages);
   }
 
-  async #loadXfaFonts(handler, task) {
+  async #loadXfaFonts(handler, task, rendererHandler) {
     const acroForm = await this.pdfManager.ensureCatalog("acroForm");
     if (!acroForm) {
       return;
@@ -1221,6 +1300,7 @@ class PDFDocument {
     const partialEvaluator = new PartialEvaluator({
       xref: this.xref,
       handler,
+      rendererHandler,
       pageIndex: -1,
       idFactory: this._globalIdFactory,
       fontCache,
@@ -1333,9 +1413,9 @@ class PDFDocument {
     this.xfaFactory.appendFonts(pdfFonts, reallyMissingFonts);
   }
 
-  loadXfaResources(handler, task) {
+  loadXfaResources(handler, task, rendererHandler) {
     return Promise.all([
-      this.#loadXfaFonts(handler, task).catch(() => {
+      this.#loadXfaFonts(handler, task, rendererHandler).catch(() => {
         // Ignore errors, to allow the document to load.
       }),
       this.#loadXfaImages(),
@@ -1389,6 +1469,20 @@ class PDFDocument {
       // specification).
       const sigFlags = acroForm.get("SigFlags");
       const hasSignatures = !!(sigFlags & 0x1);
+      if (typeof PDFJSDev !== "undefined" && PDFJSDev.test("MOZCENTRAL")) {
+        if (hasSignatures) {
+          const collectedSignatureCertificates = new Set();
+          this.#collectSignatureCertificates(
+            fields,
+            collectedSignatureCertificates
+          );
+          if (collectedSignatureCertificates.size > 0) {
+            formInfo.collectedSignatureCertificates = Array.from(
+              collectedSignatureCertificates
+            );
+          }
+        }
+      }
       const hasOnlyDocumentSignatures =
         hasSignatures && this.#hasOnlyDocumentSignatures(fields);
       formInfo.hasAcroForm = hasFields && !hasOnlyDocumentSignatures;
@@ -1415,6 +1509,11 @@ class PDFDocument {
       IsCollectionPresent: !!catalog.collection,
       IsSignaturesPresent: formInfo.hasSignatures,
     };
+
+    if (typeof PDFJSDev !== "undefined" && PDFJSDev.test("MOZCENTRAL")) {
+      docInfo.collectedSignatureCertificates =
+        formInfo.collectedSignatureCertificates ?? null;
+    }
 
     let infoDict;
     try {

@@ -126,6 +126,10 @@ class HighlightEditor extends AnnotationEditor {
       this.#addToDrawLayer();
       this.rotate(this.rotation);
     }
+
+    if (!this.annotationElementId) {
+      this._uiManager.a11yAlert("pdfjs-editor-highlight-added-alert");
+    }
   }
 
   /** @inheritdoc */
@@ -398,16 +402,14 @@ class HighlightEditor extends AnnotationEditor {
   }
 
   /** @inheritdoc */
-  async addEditToolbar() {
-    const toolbar = await super.addEditToolbar();
-    if (!toolbar) {
-      return null;
-    }
+  get toolbarButtons() {
     if (this._uiManager.highlightColors) {
-      this.#colorPicker = new ColorPicker({ editor: this });
-      toolbar.addColorPicker(this.#colorPicker);
+      const colorPicker = (this.#colorPicker = new ColorPicker({
+        editor: this,
+      }));
+      return [["colorPicker", colorPicker]];
     }
-    return toolbar;
+    return super.toolbarButtons;
   }
 
   /** @inheritdoc */
@@ -878,6 +880,7 @@ class HighlightEditor extends AnnotationEditor {
         pageIndex: pageNumber - 1,
         rect: rect.slice(0),
         rotation,
+        annotationElementId: id,
         id,
         deleted: false,
         popupRef,
@@ -906,6 +909,7 @@ class HighlightEditor extends AnnotationEditor {
         pageIndex: pageNumber - 1,
         rect: rect.slice(0),
         rotation,
+        annotationElementId: id,
         id,
         deleted: false,
         popupRef,
@@ -920,7 +924,6 @@ class HighlightEditor extends AnnotationEditor {
     if (inkLists) {
       editor.#thickness = data.thickness;
     }
-    editor.annotationElementId = data.id || null;
     editor._initialData = initialData;
 
     const [pageWidth, pageHeight] = editor.pageDimensions;

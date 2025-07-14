@@ -338,31 +338,82 @@ function getPdfFilenameFromUrl(url, defaultFilename = "document.pdf") {
     warn('getPdfFilenameFromUrl: ignore "data:"-URL for performance reasons.');
     return defaultFilename;
   }
-  const reURI = /^(?:(?:[^:]+:)?\/\/[^/]+)?([^?#]*)(\?[^#]*)?(#.*)?$/;
-  //              SCHEME        HOST        1.PATH  2.QUERY   3.REF
-  // Pattern to get last matching NAME.pdf
-  const reFilename = /[^/?#=]+\.pdf\b(?!.*\.pdf\b)/i;
-  const splitURI = reURI.exec(url);
-  let suggestedFilename =
-    reFilename.exec(splitURI[1]) ||
-    reFilename.exec(splitURI[2]) ||
-    reFilename.exec(splitURI[3]);
-  if (suggestedFilename) {
-    suggestedFilename = suggestedFilename[0];
-    if (suggestedFilename.includes("%")) {
-      // URL-encoded %2Fpath%2Fto%2Ffile.pdf should be file.pdf
+
+  const getURL = urlString => {
+    try {
+      return new URL(urlString);
+    } catch {
       try {
-        suggestedFilename = reFilename.exec(
-          decodeURIComponent(suggestedFilename)
-        )[0];
+        return new URL(decodeURIComponent(urlString));
       } catch {
-        // Possible (extremely rare) errors:
-        // URIError "Malformed URI", e.g. for "%AA.pdf"
-        // TypeError "null has no properties", e.g. for "%2F.pdf"
+        try {
+          // Attempt to parse the URL using the document's base URI.
+          return new URL(urlString, "https://foo.bar");
+        } catch {
+          try {
+            return new URL(decodeURIComponent(urlString), "https://foo.bar");
+          } catch {
+            return null;
+          }
+        }
+      }
+    }
+  };
+
+  const newURL = getURL(url);
+  if (!newURL) {
+    // If the URL is invalid, return the default filename.
+    return defaultFilename;
+  }
+
+  const decode = name => {
+    try {
+      let decoded = decodeURIComponent(name);
+      if (decoded.includes("/")) {
+        decoded = decoded.split("/").at(-1);
+        if (decoded.test(/^\.pdf$/i)) {
+          return decoded;
+        }
+        return name;
+      }
+      return decoded;
+    } catch {
+      return name;
+    }
+  };
+
+  const pdfRegex = /\.pdf$/i;
+  const filename = newURL.pathname.split("/").at(-1);
+  if (pdfRegex.test(filename)) {
+    return decode(filename);
+  }
+
+  if (newURL.searchParams.size > 0) {
+    const values = Array.from(newURL.searchParams.values()).reverse();
+    for (const value of values) {
+      if (pdfRegex.test(value)) {
+        // If any of the search parameters ends with ".pdf", return it.
+        return decode(value);
+      }
+    }
+    const keys = Array.from(newURL.searchParams.keys()).reverse();
+    for (const key of keys) {
+      if (pdfRegex.test(key)) {
+        // If any of the search parameter keys ends with ".pdf", return it.
+        return decode(key);
       }
     }
   }
-  return suggestedFilename || defaultFilename;
+
+  if (newURL.hash) {
+    const reFilename = /[^/?#=]+\.pdf\b(?!.*\.pdf\b)/i;
+    const hashFilename = reFilename.exec(newURL.hash);
+    if (hashFilename) {
+      return decode(hashFilename[0]);
+    }
+  }
+
+  return defaultFilename;
 }
 
 class StatTimer {
@@ -716,6 +767,115 @@ const SupportedImageMimeTypes = [
   "image/x-icon",
 ];
 
+const INITIAL_DATA = Symbol("INITIAL_DATA");
+
+/**
+ * A PDF document and page is built of many objects. E.g. there are objects for
+ * fonts, images, rendering code, etc. These objects may get processed inside of
+ * a worker. This class implements some basic methods to manage these objects.
+ */
+class PDFObjects {
+  #objs = Object.create(null);
+
+  /**
+   * Ensures there is an object defined for `objId`.
+   *
+   * @param {string} objId
+   * @returns {Object}
+   */
+  #ensureObj(objId) {
+    return (this.#objs[objId] ||= {
+      ...Promise.withResolvers(),
+      data: INITIAL_DATA,
+    });
+  }
+
+  /**
+   * If called *without* callback, this returns the data of `objId` but the
+   * object needs to be resolved. If it isn't, this method throws.
+   *
+   * If called *with* a callback, the callback is called with the data of the
+   * object once the object is resolved. That means, if you call this method
+   * and the object is already resolved, the callback gets called right away.
+   *
+   * @param {string} objId
+   * @param {function} [callback]
+   * @returns {any}
+   */
+  get(objId, callback = null) {
+    // If there is a callback, then the get can be async and the object is
+    // not required to be resolved right now.
+    if (callback) {
+      const obj = this.#ensureObj(objId);
+      obj.promise.then(() => callback(obj.data));
+      return null;
+    }
+    // If there isn't a callback, the user expects to get the resolved data
+    // directly.
+    const obj = this.#objs[objId];
+    // If there isn't an object yet or the object isn't resolved, then the
+    // data isn't ready yet!
+    if (!obj || obj.data === INITIAL_DATA) {
+      throw new Error(`Requesting object that isn't resolved yet ${objId}.`);
+    }
+    return obj.data;
+  }
+
+  /**
+   * @param {string} objId
+   * @returns {boolean}
+   */
+  has(objId) {
+    const obj = this.#objs[objId];
+    return !!obj && obj.data !== INITIAL_DATA;
+  }
+
+  /**
+   * @param {string} objId
+   * @returns {boolean}
+   */
+  delete(objId) {
+    const obj = this.#objs[objId];
+    if (!obj || obj.data === INITIAL_DATA) {
+      // Only allow removing the object *after* it's been resolved.
+      return false;
+    }
+    delete this.#objs[objId];
+    return true;
+  }
+
+  /**
+   * Resolves the object `objId` with optional `data`.
+   *
+   * @param {string} objId
+   * @param {any} [data]
+   */
+  resolve(objId, data = null) {
+    const obj = this.#ensureObj(objId);
+    obj.data = data;
+    obj.resolve();
+  }
+
+  clear() {
+    for (const objId in this.#objs) {
+      const { data } = this.#objs[objId];
+      data?.bitmap?.close(); // Release any `ImageBitmap` data.
+    }
+    this.#objs = Object.create(null);
+  }
+
+  *[Symbol.iterator]() {
+    for (const objId in this.#objs) {
+      const { data } = this.#objs[objId];
+
+      if (data === INITIAL_DATA) {
+        continue;
+      }
+      yield [objId, data];
+    }
+  }
+}
+
 export {
   deprecated,
   fetchData,
@@ -733,6 +893,7 @@ export {
   OutputScale,
   PageViewport,
   PDFDateString,
+  PDFObjects,
   PixelsPerInch,
   RenderingCancelledException,
   setLayerDimensions,
