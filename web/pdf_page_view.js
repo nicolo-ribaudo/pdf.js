@@ -31,6 +31,7 @@ import {
   PixelsPerInch,
   setLayerDimensions,
   shadow,
+  TextLayerImages,
 } from "pdfjs-lib";
 import {
   approximateFraction,
@@ -90,6 +91,8 @@ import { XfaLayerBuilder } from "./xfa_layer_builder.js";
  *   `maxCanvasDim`, it will draw a second canvas on top of the CSS-zoomed one,
  *   that only renders the part of the page that is close to the viewport.
  *   The default value is `true`.
+ * @property {boolean} [enableImagesRightClick] - When enabled, PDF
+ *   rendering will handle right-click events on the images rendered in the PDF.
  * @property {boolean} [enableOptimizedPartialRendering] - When enabled, PDF
  *   rendering will keep track of which areas of the page each PDF operation
  *   affects. Then, when rendering a partial page (if `enableDetailCanvas` is
@@ -457,7 +460,7 @@ class PDFPageView extends BasePDFPageView {
     }
   }
 
-  async #renderTextLayer(imageCoordinates) {
+  async #renderTextLayer() {
     if (!this.textLayer) {
       return;
     }
@@ -465,7 +468,13 @@ class PDFPageView extends BasePDFPageView {
     try {
       await this.textLayer.render({
         viewport: this.viewport,
-        imageCoordinates,
+        images: this.imageCoordinates
+          ? new TextLayerImages(
+              this.imageCoordinates,
+              this.viewport,
+              () => this.canvas
+            )
+          : null,
       });
     } catch (ex) {
       if (ex instanceof AbortException) {
@@ -651,6 +660,7 @@ class PDFPageView extends BasePDFPageView {
         this.detailView ??= new PDFPageDetailView({
           pageView: this,
           enableOptimizedPartialRendering: this.enableOptimizedPartialRendering,
+          enableImagesRightClick: false,
         });
         this.detailView.update({ visibleArea });
       } else if (this.detailView) {
@@ -1074,8 +1084,6 @@ class PDFPageView extends BasePDFPageView {
 
     const recordImages = this.enableImagesRightClick && !this.imageCoordinates;
 
-    console.log("REC?", this.enableImagesRightClick);
-
     // Rendering area
     const transform = outputScale.scaled
       ? [outputScale.sx, 0, 0, outputScale.sy, 0, 0]
@@ -1107,7 +1115,7 @@ class PDFPageView extends BasePDFPageView {
         viewport.rawDims
       );
 
-      const textLayerPromise = this.#renderTextLayer(this.imageCoordinates);
+      const textLayerPromise = this.#renderTextLayer();
 
       if (this.annotationLayer) {
         await this.#renderAnnotationLayer();

@@ -63,8 +63,7 @@ class BasePDFPageView {
     this.renderingQueue = options.renderingQueue;
     this.enableOptimizedPartialRendering =
       options.enableOptimizedPartialRendering ?? false;
-    this.enableImagesRightClick = true;
-    options.enableImagesRightClick ?? false;
+    this.enableImagesRightClick = options.enableImagesRightClick ?? false;
     this.#minDurationToUpdateCanvas = options.minDurationToUpdateCanvas ?? 500;
   }
 

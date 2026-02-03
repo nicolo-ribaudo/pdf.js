@@ -249,6 +249,11 @@ const defaultOptions = {
     value: typeof PDFJSDev === "undefined" || PDFJSDev.test("TESTING"),
     kind: OptionKind.VIEWER + OptionKind.PREFERENCE,
   },
+  enableImagesRightClick: {
+    /** @type {boolean} */
+    value: typeof PDFJSDev === "undefined" || !PDFJSDev.test("GECKOVIEW"),
+    kind: OptionKind.VIEWER + OptionKind.PREFERENCE,
+  },
   enableNewAltTextWhenAddingImage: {
     /** @type {boolean} */
     value: true,

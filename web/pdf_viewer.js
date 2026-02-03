@@ -131,6 +131,8 @@ function isValidAnnotationEditorMode(mode) {
  *   `maxCanvasDim`, it will draw a second canvas on top of the CSS-zoomed one,
  *   that only renders the part of the page that is close to the viewport.
  *   The default value is `true`.
+ * @property {boolean} [enableImagesRightClick] - When enabled, PDF
+ *   rendering will handle right-click events on the images rendered in the PDF.
  * @property {boolean} [enableOptimizedPartialRendering] - When enabled, PDF
  *   rendering will keep track of which areas of the page each PDF operation
  *   affects. Then, when rendering a partial page (if `enableDetailCanvas` is
@@ -363,6 +365,7 @@ class PDFViewer {
     this.enableDetailCanvas = options.enableDetailCanvas ?? true;
     this.enableOptimizedPartialRendering =
       options.enableOptimizedPartialRendering ?? false;
+    this.enableImagesRightClick = options.enableImagesRightClick ?? false;
     this.l10n = options.l10n;
     if (typeof PDFJSDev === "undefined" || PDFJSDev.test("GENERIC")) {
       this.l10n ||= new GenericL10n();
@@ -1060,6 +1063,7 @@ class PDFViewer {
             enableDetailCanvas: this.enableDetailCanvas,
             enableOptimizedPartialRendering:
               this.enableOptimizedPartialRendering,
+            enableImagesRightClick: this.enableImagesRightClick,
             pageColors,
             l10n: this.l10n,
             layerProperties: this._layerProperties,
