@@ -657,7 +657,8 @@ class CanvasGraphics {
     { optionalContentConfig, markedContentStack = null },
     annotationCanvasMap,
     pageColors,
-    dependencyTracker
+    dependencyTracker,
+    imagesTracker
   ) {
     this.ctx = canvasCtx;
     this.current = new CanvasExtraState(
@@ -699,6 +700,7 @@ class CanvasGraphics {
     this._cachedBitmapsMap = new Map();
 
     this.dependencyTracker = dependencyTracker ?? null;
+    this.imagesTracker = imagesTracker ?? null;
   }
 
   getObject(opIdx, data, fallback = null) {
@@ -3073,6 +3075,8 @@ class CanvasGraphics {
       .recordBBox(opIdx, ctx, 0, width, -height, 0)
       .recordDependencies(opIdx, Dependencies.imageXObject)
       .recordOperation(opIdx);
+
+    this.imagesTracker?.record(ctx, width, height);
 
     drawImageAtIntegerCoords(
       ctx,

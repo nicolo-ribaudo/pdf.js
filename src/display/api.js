@@ -37,6 +37,10 @@ import {
   SerializableEmpty,
 } from "./annotation_storage.js";
 import {
+  CanvasDependencyTracker,
+  CanvasImagesTracker,
+} from "./canvas_dependency_tracker.js";
+import {
   deprecated,
   isDataScheme,
   isValidFetchUrl,
@@ -65,7 +69,6 @@ import {
   NodeStandardFontDataFactory,
   NodeWasmFactory,
 } from "display-node_utils";
-import { CanvasDependencyTracker } from "./canvas_dependency_tracker.js";
 import { CanvasGraphics } from "./canvas.js";
 import { DOMCanvasFactory } from "./canvas_factory.js";
 import { DOMCMapReaderFactory } from "display-cmap_reader_factory";
@@ -1341,6 +1344,7 @@ class PDFPageProxy {
     this._intentStates = new Map();
     this.destroyed = false;
     this.recordedBBoxes = null;
+    this.imageCoordinates = null;
   }
 
   /**
@@ -1465,6 +1469,7 @@ class PDFPageProxy {
     pageColors = null,
     printAnnotationStorage = null,
     isEditing = false,
+    recordImages = true,
     recordOperations = false,
     operationsFilter = null,
   }) {
@@ -1519,6 +1524,7 @@ class PDFPageProxy {
 
     const shouldRecordOperations =
       !this.recordedBBoxes && (recordOperations || recordForDebugger);
+    const shouldRecordImages = !this.imageCoordinates && recordImages;
 
     const complete = error => {
       intentState.renderTasks.delete(internalRenderTask);
@@ -1536,6 +1542,10 @@ class PDFPageProxy {
             this.recordedBBoxes = recordedBBoxes;
           }
         }
+      }
+
+      if (shouldRecordImages) {
+        this.imageCoordinates = internalRenderTask.gfx?.imagesTracker.take();
       }
 
       // Attempt to reduce memory usage during *printing*, by always running
@@ -1578,6 +1588,9 @@ class PDFPageProxy {
               intentState.operatorList.length,
               recordForDebugger
             )
+          : null,
+        imagesTracker: shouldRecordImages
+          ? new CanvasImagesTracker(canvas)
           : null,
         viewport,
         transform,
@@ -1750,6 +1763,10 @@ class PDFPageProxy {
       };
       pump();
     });
+  }
+
+  getImagesCoordinates() {
+    return this._transport.getImagesCoordinates(this._pageIndex);
   }
 
   /**
@@ -3050,6 +3067,12 @@ class WorkerTransport {
     });
   }
 
+  getImagesCoordinates(pageIndex) {
+    return this.messageHandler.sendWithPromise("GetImagesCoordinates", {
+      pageIndex,
+    });
+  }
+
   getStructTree(pageIndex) {
     return this.messageHandler.sendWithPromise("GetStructTree", {
       pageIndex,
@@ -3195,6 +3218,10 @@ class RenderTask {
       (separateAnnots.canvas && annotationCanvasMap?.size > 0)
     );
   }
+
+  get imageCoordinates() {
+    return this.#internalRenderTask.imageCoordinates || null;
+  }
 }
 
 /**
@@ -3252,6 +3279,7 @@ class InternalRenderTask {
     this._canvasContext = params.canvas ? null : params.canvasContext;
     this._enableHWA = enableHWA;
     this._dependencyTracker = params.dependencyTracker;
+    this._imagesTracker = params.imagesTracker;
     this._operationsFilter = operationsFilter;
   }
 
@@ -3282,7 +3310,13 @@ class InternalRenderTask {
       this.stepper.init(this.operatorList);
       this.stepper.nextBreakPoint = this.stepper.getNextBreakPoint();
     }
-    const { viewport, transform, background, dependencyTracker } = this.params;
+    const {
+      viewport,
+      transform,
+      background,
+      dependencyTracker,
+      imagesTracker,
+    } = this.params;
 
     // When printing in Firefox, we get a specific context in mozPrintCallback
     // which cannot be created from the canvas itself.
@@ -3302,7 +3336,8 @@ class InternalRenderTask {
       { optionalContentConfig },
       this.annotationCanvasMap,
       this.pageColors,
-      dependencyTracker
+      dependencyTracker,
+      imagesTracker
     );
     this.gfx.beginDrawing({
       transform,

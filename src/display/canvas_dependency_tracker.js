@@ -909,4 +909,59 @@ const Dependencies = {
   transformAndFill: ["transform", "fillColor"],
 };
 
-export { CanvasDependencyTracker, CanvasNestedDependencyTracker, Dependencies };
+class CanvasImagesTracker {
+  #canvasWidth;
+
+  #canvasHeight;
+
+  #capacity = 4;
+
+  #count = 0;
+
+  // Array of [x1, y1, x2, y2, x3, y3] coordinates.
+  // We need three points to be able to represent a rectangle with a transform
+  // applied.
+  #coords = new Float16Array(this.#capacity * 6);
+
+  constructor(canvas) {
+    this.#canvasWidth = canvas.width;
+    this.#canvasHeight = canvas.height;
+  }
+
+  record(ctx, width, height) {
+    if (this.#count === this.#capacity) {
+      this.#capacity *= 2;
+      const newCoords = new Float16Array(this.#capacity * 6);
+      newCoords.set(this.#coords);
+      this.#coords = newCoords;
+    }
+
+    const transform = Util.domMatrixToTransform(ctx.getTransform());
+
+    // (0, 0) is the bottom left corner.
+    // We want top left, bottom left, top right.
+    const coords = [0, -height, 0, 0, width, -height];
+    Util.applyTransform(coords, transform, 0);
+    Util.applyTransform(coords, transform, 2);
+    Util.applyTransform(coords, transform, 4);
+    coords[0] /= this.#canvasWidth;
+    coords[1] /= this.#canvasHeight;
+    coords[2] /= this.#canvasWidth;
+    coords[3] /= this.#canvasHeight;
+    coords[4] /= this.#canvasWidth;
+    coords[5] /= this.#canvasHeight;
+    this.#coords.set(coords, this.#count * 6);
+    this.#count++;
+  }
+
+  take() {
+    return this.#coords.subarray(0, this.#count * 6);
+  }
+}
+
+export {
+  CanvasDependencyTracker,
+  CanvasImagesTracker,
+  CanvasNestedDependencyTracker,
+  Dependencies,
+};

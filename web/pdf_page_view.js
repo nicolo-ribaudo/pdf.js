@@ -457,7 +457,7 @@ class PDFPageView extends BasePDFPageView {
     }
   }
 
-  async #renderTextLayer() {
+  async #renderTextLayer(imageCoordinates) {
     if (!this.textLayer) {
       return;
     }
@@ -465,6 +465,7 @@ class PDFPageView extends BasePDFPageView {
     try {
       await this.textLayer.render({
         viewport: this.viewport,
+        imageCoordinates,
       });
     } catch (ex) {
       if (ex instanceof AbortException) {
@@ -936,7 +937,7 @@ class PDFPageView extends BasePDFPageView {
     return canvasWrapper;
   }
 
-  _getRenderingContext(canvas, transform, recordOperations) {
+  _getRenderingContext(canvas, transform, recordOperations, recordImages) {
     return {
       canvas,
       transform,
@@ -947,6 +948,7 @@ class PDFPageView extends BasePDFPageView {
       pageColors: this.pageColors,
       isEditing: this.#isEditing,
       recordOperations,
+      recordImages,
     };
   }
 
@@ -1070,12 +1072,16 @@ class PDFPageView extends BasePDFPageView {
       this.#hasRestrictedScaling &&
       !this.recordedBBoxes;
 
+    const recordImages = this.enableImagesRightClick && !this.imageCoordinates;
+
+    console.log("REC?", this.enableImagesRightClick);
+
     // Rendering area
     const transform = outputScale.scaled
       ? [outputScale.sx, 0, 0, outputScale.sy, 0, 0]
       : null;
     const resultPromise = this._drawCanvas(
-      this._getRenderingContext(canvas, transform, recordBBoxes),
+      this._getRenderingContext(canvas, transform, recordBBoxes, recordImages),
       () => {
         prevCanvas?.remove();
         this._resetCanvas();
@@ -1101,7 +1107,7 @@ class PDFPageView extends BasePDFPageView {
         viewport.rawDims
       );
 
-      const textLayerPromise = this.#renderTextLayer();
+      const textLayerPromise = this.#renderTextLayer(this.imageCoordinates);
 
       if (this.annotationLayer) {
         await this.#renderAnnotationLayer();

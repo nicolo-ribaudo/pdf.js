@@ -38,9 +38,13 @@ class BasePDFPageView {
 
   enableOptimizedPartialRendering = false;
 
+  enableImagesRightClick = false;
+
   eventBus = null;
 
   id = null;
+
+  imageCoordinates = null;
 
   pageColors = null;
 
@@ -59,6 +63,8 @@ class BasePDFPageView {
     this.renderingQueue = options.renderingQueue;
     this.enableOptimizedPartialRendering =
       options.enableOptimizedPartialRendering ?? false;
+    this.enableImagesRightClick = true;
+    options.enableImagesRightClick ?? false;
     this.#minDurationToUpdateCanvas = options.minDurationToUpdateCanvas ?? 500;
   }
 
@@ -236,6 +242,9 @@ class BasePDFPageView {
         this.renderTask = null;
         if (this.enableOptimizedPartialRendering) {
           this.recordedBBoxes ??= renderTask.recordedBBoxes;
+        }
+        if (this.enableImagesRightClick) {
+          this.imageCoordinates ??= this.pdfPage.imageCoordinates;
         }
       }
     }

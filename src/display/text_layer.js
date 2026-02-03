@@ -84,6 +84,12 @@ class TextLayer {
 
   #transform = null;
 
+  #imageCoordinates = null;
+
+  #imageCoordinatesByElement = new Map();
+
+  static #activeImage = null;
+
   static #ascentCache = new Map();
 
   static #canvasContexts = new Map();
@@ -97,7 +103,7 @@ class TextLayer {
   /**
    * @param {TextLayerParameters} options
    */
-  constructor({ textContentSource, container, viewport }) {
+  constructor({ textContentSource, imageCoordinates, container, viewport }) {
     if (textContentSource instanceof ReadableStream) {
       this.#textContentSource = textContentSource;
     } else if (
@@ -114,6 +120,8 @@ class TextLayer {
       throw new Error('No "textContentSource" parameter specified.');
     }
     this.#container = this.#rootContainer = container;
+
+    this.#imageCoordinates = imageCoordinates;
 
     this.#scale = viewport.scale * OutputScale.pixelRatio;
     this.#rotation = viewport.rotation;
@@ -181,6 +189,10 @@ class TextLayer {
    * @returns {Promise}
    */
   render() {
+    if (this.#imageCoordinates) {
+      this.renderImagePlaceholders();
+    }
+
     const pump = () => {
       this.#reader.read().then(({ value, done }) => {
         if (done) {
@@ -198,6 +210,98 @@ class TextLayer {
     pump();
 
     return this.#capability.promise;
+  }
+
+  renderImagePlaceholders() {
+    for (let i = 0; i < this.#imageCoordinates.length; i += 6) {
+      const el = this.createImagePlaceholder(
+        this.#imageCoordinates.subarray(i, i + 6)
+      );
+      this.#container.append(el);
+    }
+
+    this.#container.addEventListener("contextmenu", event => {
+      if (!(event.target instanceof HTMLCanvasElement)) {
+        return;
+      }
+      const imgElement = event.target;
+      const coords = this.#imageCoordinatesByElement.get(imgElement);
+      if (!coords) {
+        return;
+      }
+
+      if (TextLayer.#activeImage === imgElement) {
+        return;
+      }
+      if (TextLayer.#activeImage) {
+        TextLayer.#activeImage.width = 0;
+        TextLayer.#activeImage.height = 0;
+      }
+      TextLayer.#activeImage = imgElement;
+
+      const { inverseTransform, x1, y1, width, height } = coords;
+
+      const pageCanvas = this.#container.parentNode.querySelector(
+        ".canvasWrapper canvas"
+      );
+
+      const widthRatio = pageCanvas.width / this.#pageWidth;
+      const heightRatio = pageCanvas.height / this.#pageHeight;
+
+      imgElement.width = width * widthRatio;
+      imgElement.height = height * heightRatio;
+      const ctx = imgElement.getContext("2d");
+      ctx.setTransform(...inverseTransform);
+      ctx.translate(-x1 * pageCanvas.width, -y1 * pageCanvas.height);
+      ctx.drawImage(pageCanvas, 0, 0);
+    });
+  }
+
+  createImagePlaceholder(
+    [x1, y1, x2, y2, x3, y3] // top left, bottom left, top right
+  ) {
+    const width = Math.hypot(
+      (x3 - x1) * this.#pageWidth,
+      (y3 - y1) * this.#pageHeight
+    );
+    const height = Math.hypot(
+      (x2 - x1) * this.#pageWidth,
+      (y2 - y1) * this.#pageHeight
+    );
+    const transform = [
+      ((x3 - x1) * this.#pageWidth) / width,
+      ((y3 - y1) * this.#pageHeight) / width,
+      ((x2 - x1) * this.#pageWidth) / height,
+      ((y2 - y1) * this.#pageHeight) / height,
+      0,
+      0,
+    ];
+    const inverseTransform = Util.inverseTransform(transform);
+
+    const imgElement = document.createElement("canvas");
+    imgElement.className = "textLayerImagePlaceholder";
+    imgElement.width = 0;
+    imgElement.height = 0;
+    Object.assign(imgElement.style, {
+      opacity: 0,
+      position: "absolute",
+      left: percentage(x1),
+      top: percentage(y1),
+      width: percentage(width / this.#pageWidth),
+      height: percentage(height / this.#pageHeight),
+      transformOrigin: "0% 0%",
+      transform: `matrix(${transform.join(",")})`,
+    });
+
+    this.#imageCoordinatesByElement.set(imgElement, {
+      inverseTransform,
+      width,
+      height,
+      x1,
+      y1,
+    });
+
+    return imgElement;
   }
 
   /**
@@ -546,6 +650,10 @@ class TextLayer {
     this.#ascentCache.set(fontFamily, ratio);
     return ratio;
   }
+}
+
+function percentage(value) {
+  return `${(value * 100).toFixed(2)}%`;
 }
 
 export { TextLayer };
