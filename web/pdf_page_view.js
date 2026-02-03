@@ -91,8 +91,9 @@ import { XfaLayerBuilder } from "./xfa_layer_builder.js";
  *   `maxCanvasDim`, it will draw a second canvas on top of the CSS-zoomed one,
  *   that only renders the part of the page that is close to the viewport.
  *   The default value is `true`.
- * @property {boolean} [enableImagesRightClick] - When enabled, PDF
- *   rendering will handle right-click events on the images rendered in the PDF.
+ * @property {number} [imagesRightClickMinSize] - All images whose width and
+ *  height are at least this value (in pixels) will be lazily inserted in the
+ *  dom to allow right-clicking and saving them. Use `-1` to disable this.
  * @property {boolean} [enableOptimizedPartialRendering] - When enabled, PDF
  *   rendering will keep track of which areas of the page each PDF operation
  *   affects. Then, when rendering a partial page (if `enableDetailCanvas` is
@@ -470,6 +471,7 @@ class PDFPageView extends BasePDFPageView {
         viewport: this.viewport,
         images: this.imageCoordinates
           ? new TextLayerImages(
+              this.imagesRightClickMinSize,
               this.imageCoordinates,
               this.viewport,
               () => this.canvas
@@ -660,7 +662,7 @@ class PDFPageView extends BasePDFPageView {
         this.detailView ??= new PDFPageDetailView({
           pageView: this,
           enableOptimizedPartialRendering: this.enableOptimizedPartialRendering,
-          enableImagesRightClick: false,
+          imagesRightClickMinSize: false,
         });
         this.detailView.update({ visibleArea });
       } else if (this.detailView) {
@@ -1082,7 +1084,8 @@ class PDFPageView extends BasePDFPageView {
       this.#hasRestrictedScaling &&
       !this.recordedBBoxes;
 
-    const recordImages = this.enableImagesRightClick && !this.imageCoordinates;
+    const recordImages =
+      this.imagesRightClickMinSize !== -1 && !this.imageCoordinates;
 
     // Rendering area
     const transform = outputScale.scaled

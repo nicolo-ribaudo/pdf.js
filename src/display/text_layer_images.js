@@ -11,13 +11,16 @@ class TextLayerImages {
 
   #getPageCanvas = null;
 
+  #minSize = 0;
+
   #pageWidth = 0;
 
   #pageHeight = 0;
 
   static #activeImage = null;
 
-  constructor(coordinates, viewport, getPageCanvas) {
+  constructor(minSize, coordinates, viewport, getPageCanvas) {
+    this.#minSize = minSize;
     this.#coordinates = coordinates;
     this.#pageWidth = viewport.rawDims.pageWidth;
     this.#pageHeight = viewport.rawDims.pageHeight;
@@ -32,7 +35,9 @@ class TextLayerImages {
       const el = this.#createImagePlaceholder(
         this.#coordinates.subarray(i, i + 6)
       );
-      container.append(el);
+      if (el) {
+        container.append(el);
+      }
     }
 
     container.addEventListener("contextmenu", event => {
@@ -83,6 +88,11 @@ class TextLayerImages {
       (x2 - x1) * this.#pageWidth,
       (y2 - y1) * this.#pageHeight
     );
+
+    if (width < this.#minSize || height < this.#minSize) {
+      return null;
+    }
+
     const transform = [
       ((x3 - x1) * this.#pageWidth) / width,
       ((y3 - y1) * this.#pageHeight) / width,
