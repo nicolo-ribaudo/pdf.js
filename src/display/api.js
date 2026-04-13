@@ -70,6 +70,7 @@ import {
   NodeFilterFactory,
 } from "display-node_utils";
 import { CanvasGraphics } from "./canvas.js";
+import { CanvasTrackingGraphics } from "./canvas_tracking_graphics.js";
 import { DOMBinaryDataFactory } from "display-binary_data_factory";
 import { DOMCanvasFactory } from "./canvas_factory.js";
 import { DOMFilterFactory } from "./filter_factory.js";
@@ -1501,11 +1502,12 @@ class PDFPageProxy {
       intentState.renderTasks.delete(internalRenderTask);
 
       if (shouldRecordOperations) {
-        const recordedBBoxes = internalRenderTask.gfx?.dependencyTracker.take();
+        const tracker = internalRenderTask._trackingGfx?.dependencyTracker;
+        const recordedBBoxes = tracker?.take();
         if (recordedBBoxes) {
           internalRenderTask.stepper?.setOperatorBBoxes(
             recordedBBoxes,
-            internalRenderTask.gfx.dependencyTracker.takeDebugMetadata()
+            tracker.takeDebugMetadata()
           );
 
           if (recordOperations) {
@@ -1515,7 +1517,7 @@ class PDFPageProxy {
       }
 
       if (shouldRecordImages && !error) {
-        this.imageCoordinates = internalRenderTask.gfx?.imagesTracker.take();
+        this.imageCoordinates = internalRenderTask._imagesTracker?.take();
       }
 
       // Attempt to reduce memory usage during *printing*, by always running
@@ -1567,10 +1569,6 @@ class PDFPageProxy {
       params: {
         canvas,
         canvasContext,
-        dependencyTracker: dependencyTracker ?? bboxTracker,
-        imagesTracker: shouldRecordImages
-          ? new CanvasImagesTracker(canvas)
-          : null,
         viewport,
         transform,
         background,
@@ -1587,6 +1585,10 @@ class PDFPageProxy {
       pageColors,
       enableHWA: this._transport.enableHWA,
       operationsFilter,
+      dependencyTracker: dependencyTracker ?? bboxTracker,
+      imagesTracker: shouldRecordImages
+        ? new CanvasImagesTracker(canvas)
+        : null,
     });
 
     (intentState.renderTasks ||= new Set()).add(internalRenderTask);
@@ -3219,6 +3221,8 @@ class InternalRenderTask {
     pageColors = null,
     enableHWA = false,
     operationsFilter = null,
+    dependencyTracker = null,
+    imagesTracker = null,
   }) {
     this.callback = callback;
     this.params = params;
@@ -3249,8 +3253,8 @@ class InternalRenderTask {
     this._canvas = params.canvas;
     this._canvasContext = params.canvas ? null : params.canvasContext;
     this._enableHWA = enableHWA;
-    this._dependencyTracker = params.dependencyTracker;
-    this._imagesTracker = params.imagesTracker;
+    this._dependencyTracker = dependencyTracker;
+    this._imagesTracker = imagesTracker;
     this._operationsFilter = operationsFilter;
   }
 
@@ -3281,13 +3285,7 @@ class InternalRenderTask {
       this.stepper.init(this.operatorList);
       this.stepper.nextBreakPoint = this.stepper.getNextBreakPoint();
     }
-    const {
-      viewport,
-      transform,
-      background,
-      dependencyTracker,
-      imagesTracker,
-    } = this.params;
+    const { viewport, transform, background } = this.params;
 
     // When printing in Firefox, we get a specific context in mozPrintCallback
     // which cannot be created from the canvas itself.
@@ -3306,9 +3304,7 @@ class InternalRenderTask {
       this.filterFactory,
       { optionalContentConfig },
       this.annotationCanvasMap,
-      this.pageColors,
-      dependencyTracker,
-      imagesTracker
+      this.pageColors
     );
     this.gfx.beginDrawing({
       transform,
@@ -3316,6 +3312,20 @@ class InternalRenderTask {
       transparency,
       background,
     });
+
+    if (this._dependencyTracker || this._imagesTracker) {
+      this._trackingGfx = new CanvasTrackingGraphics(
+        this.commonObjs,
+        this.objs,
+        canvasContext.canvas.width,
+        canvasContext.canvas.height,
+        this._dependencyTracker,
+        { optionalContentConfig },
+        this._imagesTracker
+      );
+      this._trackingGfx.beginDrawing({ transform, viewport });
+    }
+
     this.operatorListIdx = 0;
     this.graphicsReady = true;
     this.graphicsReadyCallback?.();
@@ -3345,7 +3355,7 @@ class InternalRenderTask {
       this.graphicsReadyCallback ||= this._continueBound;
       return;
     }
-    this.gfx.dependencyTracker?.growOperationsCount(
+    this._dependencyTracker?.growOperationsCount(
       this.operatorList.fnArray.length
     );
     this.stepper?.updateOperatorList(this.operatorList);
@@ -3394,6 +3404,9 @@ class InternalRenderTask {
       this.running = false;
       if (this.operatorList.lastChunk) {
         this.gfx.endDrawing();
+        if (this._trackingGfx) {
+          this._trackingGfx.executeOperatorList(this.operatorList);
+        }
         InternalRenderTask.#canvasInUse.delete(this._canvas);
         this.callback();
       }

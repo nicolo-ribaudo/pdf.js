@@ -1228,7 +1228,7 @@ class CanvasImagesTracker {
     this.#canvasHeight = canvas.height;
   }
 
-  record(ctx, width, height, clipBox) {
+  record(ctxOrTransform, width, height, clipBox) {
     if (this.#count === this.#capacity) {
       this.#capacity *= 2;
       const newCoords = new CanvasImagesTracker.#CoordsArray(
@@ -1238,7 +1238,9 @@ class CanvasImagesTracker {
       this.#coords = newCoords;
     }
 
-    const transform = Util.domMatrixToTransform(ctx.getTransform());
+    const transform = Array.isArray(ctxOrTransform)
+      ? ctxOrTransform
+      : Util.domMatrixToTransform(ctxOrTransform.getTransform());
 
     // We want top left, bottom left, top right.
     // (0, 0) is the bottom left corner.
