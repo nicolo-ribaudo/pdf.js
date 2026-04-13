@@ -13,6 +13,7 @@
  * limitations under the License.
  */
 
+import { BaseGraphics, CanvasExtraState } from "./base_graphics.js";
 import {
   CanvasNestedDependencyTracker,
   Dependencies,
@@ -24,15 +25,11 @@ import {
   Util,
   warn,
 } from "../shared/util.js";
-import { CanvasExtraState } from "./canvas.js";
 
 // Minimal font size that would be used during canvas fillText operations.
 const MIN_FONT_SIZE = 16;
 // Maximum font size that would be used during canvas fillText operations.
 const MAX_FONT_SIZE = 100;
-
-const NORMAL_CLIP = {};
-const EO_CLIP = {};
 
 /**
  * CanvasTrackingGraphics implements the same operator dispatch interface as
@@ -45,45 +42,23 @@ const EO_CLIP = {};
  * Methods in canvas.js that need syncing are annotated with comments
  * pointing to this file.
  */
-class CanvasTrackingGraphics {
+class CanvasTrackingGraphics extends BaseGraphics {
   constructor(
     commonObjs,
     objs,
     canvasWidth,
     canvasHeight,
     dependencyTracker,
-    { optionalContentConfig, markedContentStack = null },
+    opts,
     imagesTracker = null
   ) {
-    this.current = new CanvasExtraState(canvasWidth, canvasHeight);
-    this.stateStack = [];
-    this.pendingClip = null;
-    this.pendingEOFill = false;
-    this.commonObjs = commonObjs;
-    this.objs = objs;
-    this.baseTransform = null;
-    this.baseTransformStack = [];
-    this.groupStack = [];
-    this.groupLevel = 0;
-    this.contentVisible = true;
-    this.markedContentStack = markedContentStack || [];
-    this.optionalContentConfig = optionalContentConfig;
-    this.viewportScale = 1;
-    this.outputScaleX = 1;
-    this.outputScaleY = 1;
-
-    this.dependencyTracker = dependencyTracker;
+    super(canvasWidth, canvasHeight, commonObjs, objs, opts, dependencyTracker);
     this.imagesTracker = imagesTracker;
   }
 
   getObject(opIdx, data, fallback = null) {
-    if (typeof data === "string") {
-      this.dependencyTracker.recordNamedDependency(opIdx, data);
-      return data.startsWith("g_")
-        ? this.commonObjs.get(data)
-        : this.objs.get(data);
-    }
-    return fallback;
+    this.dependencyTracker.recordNamedDependency(opIdx, data);
+    return super.getObject(opIdx, data, fallback);
   }
 
   beginDrawing({ transform, viewport }) {
@@ -195,20 +170,12 @@ class CanvasTrackingGraphics {
     this[op](opIdx);
   }
 
-  closePath(opIdx) {
-    // No-op for tracking.
-  }
-
   stroke(opIdx, path, consumePath = true) {
     this.dependencyTracker.recordDependencies(opIdx, Dependencies.stroke);
 
     if (consumePath) {
       this.consumePath(opIdx);
     }
-  }
-
-  closeStroke(opIdx, path) {
-    this.stroke(opIdx, path);
   }
 
   fill(opIdx, path, consumePath = true) {
@@ -227,36 +194,6 @@ class CanvasTrackingGraphics {
     }
   }
 
-  eoFill(opIdx, path) {
-    this.pendingEOFill = true;
-    this.fill(opIdx, path);
-  }
-
-  fillStroke(opIdx, path) {
-    this.fill(opIdx, path, false);
-    this.stroke(opIdx, path, false);
-
-    this.consumePath(opIdx);
-  }
-
-  eoFillStroke(opIdx, path) {
-    this.pendingEOFill = true;
-    this.fillStroke(opIdx, path);
-  }
-
-  closeFillStroke(opIdx, path) {
-    this.fillStroke(opIdx, path);
-  }
-
-  closeEOFillStroke(opIdx, path) {
-    this.pendingEOFill = true;
-    this.fillStroke(opIdx, path);
-  }
-
-  endPath(opIdx) {
-    this.consumePath(opIdx);
-  }
-
   rawFillPath(opIdx) {
     this.dependencyTracker
       .recordDependencies(opIdx, Dependencies.rawFillPath)
@@ -266,21 +203,17 @@ class CanvasTrackingGraphics {
   // Clipping
   clip(opIdx) {
     this.dependencyTracker.recordFutureForcedDependency("clipMode", opIdx);
-    this.pendingClip = NORMAL_CLIP;
+    super.clip(opIdx);
   }
 
   eoClip(opIdx) {
     this.dependencyTracker.recordFutureForcedDependency("clipMode", opIdx);
-    this.pendingClip = EO_CLIP;
+    super.eoClip(opIdx);
   }
 
   // Text
   beginText(opIdx) {
-    this.current.textMatrix = null;
-    this.current.textMatrixScale = 1;
-    this.current.x = this.current.lineX = 0;
-    this.current.y = this.current.lineY = 0;
-
+    super.beginText(opIdx);
     this.dependencyTracker
       .recordOpenMarker(opIdx)
       .resetIncrementalData("sameLineText")
@@ -302,22 +235,22 @@ class CanvasTrackingGraphics {
 
   setCharSpacing(opIdx, spacing) {
     this.dependencyTracker.recordSimpleData("charSpacing", opIdx);
-    this.current.charSpacing = spacing;
+    super.setCharSpacing(opIdx, spacing);
   }
 
   setWordSpacing(opIdx, spacing) {
     this.dependencyTracker.recordSimpleData("wordSpacing", opIdx);
-    this.current.wordSpacing = spacing;
+    super.setWordSpacing(opIdx, spacing);
   }
 
   setHScale(opIdx, scale) {
     this.dependencyTracker.recordSimpleData("hScale", opIdx);
-    this.current.textHScale = scale / 100;
+    super.setHScale(opIdx, scale);
   }
 
   setLeading(opIdx, leading) {
     this.dependencyTracker.recordSimpleData("leading", opIdx);
-    this.current.leading = -leading;
+    super.setLeading(opIdx, leading);
   }
 
   setFont(opIdx, fontRefName, size) {
@@ -376,42 +309,30 @@ class CanvasTrackingGraphics {
 
   setTextRenderingMode(opIdx, mode) {
     this.dependencyTracker.recordSimpleData("textRenderingMode", opIdx);
-    this.current.textRenderingMode = mode;
+    super.setTextRenderingMode(opIdx, mode);
   }
 
   setTextRise(opIdx, rise) {
     this.dependencyTracker.recordSimpleData("textRise", opIdx);
-    this.current.textRise = rise;
+    super.setTextRise(opIdx, rise);
   }
 
   moveText(opIdx, x, y) {
     this.dependencyTracker
       .resetIncrementalData("sameLineText")
       .recordIncrementalData("moveText", opIdx);
-    this.current.x = this.current.lineX += x;
-    this.current.y = this.current.lineY += y;
-  }
-
-  setLeadingMoveText(opIdx, x, y) {
-    this.setLeading(opIdx, -y);
-    this.moveText(opIdx, x, y);
+    super.moveText(opIdx, x, y);
   }
 
   setTextMatrix(opIdx, matrix) {
     this.dependencyTracker
       .resetIncrementalData("sameLineText")
       .recordSimpleData("textMatrix", opIdx);
-    const { current } = this;
-    current.textMatrix = matrix;
-    current.textMatrixScale = Math.hypot(matrix[0], matrix[1]);
-
-    current.x = current.lineX = 0;
-    current.y = current.lineY = 0;
+    super.setTextMatrix(opIdx, matrix);
   }
 
   nextLine(opIdx) {
-    this.moveText(opIdx, 0, this.current.leading);
-
+    super.nextLine(opIdx);
     this.dependencyTracker.recordIncrementalData(
       "moveText",
       this.dependencyTracker.getSimpleIndex("leading") ?? opIdx
@@ -681,11 +602,6 @@ class CanvasTrackingGraphics {
   }
 
   // Type3 fonts
-  setCharWidth(opIdx, xWidth, yWidth) {
-    // We can safely ignore this since the width should be the same
-    // as the width in the Widths array.
-  }
-
   setCharWidthAndBounds(opIdx, xWidth, yWidth, llx, lly, urx, ury) {
     this.dependencyTracker
       .recordBBox(opIdx, llx, urx, lly, ury)
@@ -705,28 +621,22 @@ class CanvasTrackingGraphics {
 
   setStrokeRGBColor(opIdx, color) {
     this.dependencyTracker.recordSimpleData("strokeColor", opIdx);
-    this.current.strokeColor = color;
-    this.current.patternStroke = false;
+    super.setStrokeRGBColor(opIdx, color);
   }
 
   setStrokeTransparent(opIdx) {
     this.dependencyTracker.recordSimpleData("strokeColor", opIdx);
-    this.current.strokeColor = "transparent";
-    this.current.patternStroke = false;
+    super.setStrokeTransparent(opIdx);
   }
 
   setFillRGBColor(opIdx, color) {
     this.dependencyTracker.recordSimpleData("fillColor", opIdx);
-    this.current.fillColor = color;
-    this.current.patternFill = false;
-    this.current.tilingPatternDims = null;
+    super.setFillRGBColor(opIdx, color);
   }
 
   setFillTransparent(opIdx) {
     this.dependencyTracker.recordSimpleData("fillColor", opIdx);
-    this.current.fillColor = "transparent";
-    this.current.patternFill = false;
-    this.current.tilingPatternDims = null;
+    super.setFillTransparent(opIdx);
   }
 
   shadingFill(opIdx, objId) {
@@ -745,14 +655,6 @@ class CanvasTrackingGraphics {
   }
 
   // Images
-  beginInlineImage() {
-    // unreachable
-  }
-
-  beginImageData() {
-    // unreachable
-  }
-
   paintFormXObjectBegin(opIdx, matrix, bbox) {
     if (!this.contentVisible) {
       return;
@@ -770,14 +672,6 @@ class CanvasTrackingGraphics {
       this.dependencyTracker.recordClipBox(opIdx, x0, x1, y0, y1);
       this.endPath(opIdx);
     }
-  }
-
-  paintFormXObjectEnd(opIdx) {
-    if (!this.contentVisible) {
-      return;
-    }
-    this.restore(opIdx);
-    this.baseTransform = this.baseTransformStack.pop();
   }
 
   beginGroup(opIdx, group) {
@@ -995,44 +889,6 @@ class CanvasTrackingGraphics {
     this.dependencyTracker.recordOperation(opIdx);
   }
 
-  paintImageXObject(opIdx, objId) {
-    if (!this.contentVisible) {
-      return;
-    }
-    const imgData = this.getObject(opIdx, objId);
-    if (!imgData) {
-      warn("Dependent image isn't ready yet");
-      return;
-    }
-
-    this.paintInlineImageXObject(opIdx, imgData);
-  }
-
-  paintImageXObjectRepeat(opIdx, objId, scaleX, scaleY, positions) {
-    if (!this.contentVisible) {
-      return;
-    }
-    const imgData = this.getObject(opIdx, objId);
-    if (!imgData) {
-      warn("Dependent image isn't ready yet");
-      return;
-    }
-
-    const width = imgData.width;
-    const height = imgData.height;
-    const map = [];
-    for (let i = 0, ii = positions.length; i < ii; i += 2) {
-      map.push({
-        transform: [scaleX, 0, 0, scaleY, positions[i], positions[i + 1]],
-        x: 0,
-        y: 0,
-        w: width,
-        h: height,
-      });
-    }
-    this.paintInlineImageXObjectGroup(opIdx, imgData, map);
-  }
-
   paintInlineImageXObject(opIdx, imgData) {
     if (!this.contentVisible) {
       return;
@@ -1090,55 +946,25 @@ class CanvasTrackingGraphics {
 
   // Marked content
 
-  markPoint(opIdx, tag) {
-    // TODO Marked content.
-  }
-
-  markPointProps(opIdx, tag, properties) {
-    // TODO Marked content.
-  }
-
   beginMarkedContent(opIdx, tag) {
     this.dependencyTracker.beginMarkedContent(opIdx);
-    this.markedContentStack.push({
-      visible: true,
-    });
+    super.beginMarkedContent(opIdx, tag);
   }
 
   beginMarkedContentProps(opIdx, tag, properties) {
     this.dependencyTracker.beginMarkedContent(opIdx);
-    if (tag === "OC") {
-      this.markedContentStack.push({
-        visible: this.optionalContentConfig.isVisible(properties),
-      });
-    } else {
-      this.markedContentStack.push({
-        visible: true,
-      });
-    }
-    this.contentVisible = this.isContentVisible();
+    super.beginMarkedContentProps(opIdx, tag, properties);
   }
 
   endMarkedContent(opIdx) {
     this.dependencyTracker.endMarkedContent(opIdx);
-    this.markedContentStack.pop();
-    this.contentVisible = this.isContentVisible();
-  }
-
-  // Compatibility
-
-  beginCompat(opIdx) {
-    // TODO ignore undefined operators (should we do that anyway?)
-  }
-
-  endCompat(opIdx) {
-    // TODO stop ignoring undefined operators
+    super.endMarkedContent(opIdx);
   }
 
   // Graphics state (simple setters)
   setLineWidth(opIdx, width) {
     this.dependencyTracker.recordSimpleData("lineWidth", opIdx);
-    this.current.lineWidth = width;
+    super.setLineWidth(opIdx, width);
   }
 
   setLineCap(opIdx, style) {
@@ -1155,14 +981,6 @@ class CanvasTrackingGraphics {
 
   setDash(opIdx, dashArray, dashPhase) {
     this.dependencyTracker.recordSimpleData("dash", opIdx);
-  }
-
-  setRenderingIntent(opIdx, intent) {
-    // Ignored.
-  }
-
-  setFlatness(opIdx, flatness) {
-    // Ignored.
   }
 
   setGState(opIdx, states) {
@@ -1232,15 +1050,6 @@ class CanvasTrackingGraphics {
     }
 
     this.current.startNewPathAndClipBox(this.current.clipBox);
-  }
-
-  isContentVisible() {
-    for (let i = this.markedContentStack.length - 1; i >= 0; i--) {
-      if (!this.markedContentStack[i].visible) {
-        return false;
-      }
-    }
-    return true;
   }
 }
 

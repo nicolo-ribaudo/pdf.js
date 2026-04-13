@@ -13,6 +13,7 @@
  * limitations under the License.
  */
 
+import { BaseGraphics, CanvasExtraState, EO_CLIP } from "./base_graphics.js";
 import {
   F32_BBOX_INIT,
   FeatureTest,
@@ -23,7 +24,6 @@ import {
   OPS,
   shadow,
   TextRenderingMode,
-  unreachable,
   Util,
   warn,
 } from "../shared/util.js";
@@ -265,119 +265,7 @@ function drawImageAtIntegerCoords(
   return [scaleX * destW, scaleY * destH];
 }
 
-class CanvasExtraState {
-  // Are soft masks and alpha values shapes or opacities?
-  alphaIsShape = false;
-
-  fontSize = 0;
-
-  fontSizeScale = 1;
-
-  textMatrix = null;
-
-  textMatrixScale = 1;
-
-  fontMatrix = FONT_IDENTITY_MATRIX;
-
-  leading = 0;
-
-  // Current point (in user coordinates)
-  x = 0;
-
-  y = 0;
-
-  // Start of text line (in text coordinates)
-  lineX = 0;
-
-  lineY = 0;
-
-  // Character and word spacing
-  charSpacing = 0;
-
-  wordSpacing = 0;
-
-  textHScale = 1;
-
-  textRenderingMode = TextRenderingMode.FILL;
-
-  textRise = 0;
-
-  // Default fore and background colors
-  fillColor = "#000000";
-
-  strokeColor = "#000000";
-
-  tilingPatternDims = null;
-
-  patternFill = false;
-
-  patternStroke = false;
-
-  // Note: fill alpha applies to all non-stroking operations
-  fillAlpha = 1;
-
-  strokeAlpha = 1;
-
-  lineWidth = 1;
-
-  activeSMask = null;
-
-  transferMaps = "none";
-
-  minMax = F32_BBOX_INIT.slice();
-
-  constructor(width, height) {
-    this.clipBox = new Float32Array([0, 0, width, height]);
-  }
-
-  clone() {
-    const clone = Object.create(this);
-    clone.clipBox = this.clipBox.slice();
-    clone.minMax = this.minMax.slice();
-    clone.tilingPatternDims = this.tilingPatternDims?.slice();
-    return clone;
-  }
-
-  getPathBoundingBox(pathType = PathType.FILL, transform = null) {
-    const box = this.minMax.slice();
-    if (pathType === PathType.STROKE) {
-      if (!transform) {
-        unreachable("Stroke bounding box must include transform.");
-      }
-      // Stroked paths can be outside of the path bounding box by 1/2 the line
-      // width.
-      Util.singularValueDecompose2dScale(transform, XY);
-      const xStrokePad = (XY[0] * this.lineWidth) / 2;
-      const yStrokePad = (XY[1] * this.lineWidth) / 2;
-      box[0] -= xStrokePad;
-      box[1] -= yStrokePad;
-      box[2] += xStrokePad;
-      box[3] += yStrokePad;
-    }
-    return box;
-  }
-
-  updateClipFromPath() {
-    const intersect = Util.intersect(this.clipBox, this.getPathBoundingBox());
-    this.startNewPathAndClipBox(intersect || [0, 0, 0, 0]);
-  }
-
-  isEmptyClip() {
-    return this.minMax[0] === Infinity;
-  }
-
-  startNewPathAndClipBox(box) {
-    this.clipBox.set(box, 0);
-    this.minMax.set(F32_BBOX_INIT, 0);
-  }
-
-  getClippedPathBoundingBox(pathType = PathType.FILL, transform = null) {
-    return Util.intersect(
-      this.clipBox,
-      this.getPathBoundingBox(pathType, transform)
-    );
-  }
-}
+// CanvasExtraState is defined in base_graphics.js and re-exported here.
 
 function putBinaryImageData(ctx, imgData) {
   if (imgData instanceof ImageData) {
@@ -605,65 +493,43 @@ function getImageSmoothingEnabled(transform, interpolate) {
 
 const LINE_CAP_STYLES = ["butt", "round", "square"];
 const LINE_JOIN_STYLES = ["miter", "round", "bevel"];
-const NORMAL_CLIP = {};
-const EO_CLIP = {};
+// EO_CLIP is imported from base_graphics.js.
 
-class CanvasGraphics {
+class CanvasGraphics extends BaseGraphics {
   constructor(
     canvasCtx,
     commonObjs,
     objs,
     canvasFactory,
     filterFactory,
-    { optionalContentConfig, markedContentStack = null },
+    opts,
     annotationCanvasMap,
     pageColors
   ) {
-    this.ctx = canvasCtx;
-    this.current = new CanvasExtraState(
-      this.ctx.canvas.width,
-      this.ctx.canvas.height
+    super(
+      canvasCtx.canvas.width,
+      canvasCtx.canvas.height,
+      commonObjs,
+      objs,
+      opts
     );
-    this.stateStack = [];
-    this.pendingClip = null;
-    this.pendingEOFill = false;
-    this.commonObjs = commonObjs;
-    this.objs = objs;
+    this.ctx = canvasCtx;
     this.canvasFactory = canvasFactory;
     this.filterFactory = filterFactory;
-    this.groupStack = [];
     // Patterns are painted relative to the initial page/form transform, see
     // PDF spec 8.7.2 NOTE 1.
-    this.baseTransform = null;
-    this.baseTransformStack = [];
-    this.groupLevel = 0;
     this.smaskStack = [];
     this.smaskCounter = 0;
     this.tempSMask = null;
     this.smaskGroupCanvases = [];
     this.suspendedCtx = null;
-    this.contentVisible = true;
-    this.markedContentStack = markedContentStack || [];
-    this.optionalContentConfig = optionalContentConfig;
     this.cachedPatterns = new Map();
     this.annotationCanvasMap = annotationCanvasMap;
-    this.viewportScale = 1;
-    this.outputScaleX = 1;
-    this.outputScaleY = 1;
     this.pageColors = pageColors;
 
     this._cachedScaleForStroking = [-1, 0];
     this._cachedGetSinglePixelWidth = null;
     this._cachedBitmapsMap = new Map();
-  }
-
-  getObject(opIdx, data, fallback = null) {
-    if (typeof data === "string") {
-      return data.startsWith("g_")
-        ? this.commonObjs.get(data)
-        : this.objs.get(data);
-    }
-    return fallback;
   }
 
   beginDrawing({
@@ -1133,7 +999,7 @@ class CanvasGraphics {
     if (width !== this.current.lineWidth) {
       this._cachedScaleForStroking[0] = -1;
     }
-    this.current.lineWidth = width;
+    super.setLineWidth(opIdx, width);
     this.ctx.lineWidth = width;
   }
 
@@ -1155,14 +1021,6 @@ class CanvasGraphics {
       ctx.setLineDash(dashArray);
       ctx.lineDashOffset = dashPhase;
     }
-  }
-
-  setRenderingIntent(opIdx, intent) {
-    // This operation is ignored since we haven't found a use case for it yet.
-  }
-
-  setFlatness(opIdx, flatness) {
-    // This operation is ignored since we haven't found a use case for it yet.
   }
 
   setGState(opIdx, states) {
@@ -1547,10 +1405,6 @@ class CanvasGraphics {
     ctx.globalAlpha = this.current.fillAlpha;
   }
 
-  closeStroke(opIdx, path) {
-    this.stroke(opIdx, path);
-  }
-
   fill(opIdx, path, consumePath = true) {
     const ctx = this.ctx;
     const fillColor = this.current.fillColor;
@@ -1610,57 +1464,11 @@ class CanvasGraphics {
     }
   }
 
-  eoFill(opIdx, path) {
-    this.pendingEOFill = true;
-    this.fill(opIdx, path);
-  }
-
-  fillStroke(opIdx, path) {
-    this.fill(opIdx, path, false);
-    this.stroke(opIdx, path, false);
-
-    this.consumePath(opIdx, path);
-  }
-
-  eoFillStroke(opIdx, path) {
-    this.pendingEOFill = true;
-    this.fillStroke(opIdx, path);
-  }
-
-  closeFillStroke(opIdx, path) {
-    this.fillStroke(opIdx, path);
-  }
-
-  closeEOFillStroke(opIdx, path) {
-    this.pendingEOFill = true;
-    this.fillStroke(opIdx, path);
-  }
-
-  endPath(opIdx, path) {
-    this.consumePath(opIdx, path);
-  }
-
   rawFillPath(opIdx, path) {
     this.ctx.fill(path);
   }
 
-  // Clipping
-  clip(opIdx) {
-    this.pendingClip = NORMAL_CLIP;
-  }
-
-  eoClip(opIdx) {
-    this.pendingClip = EO_CLIP;
-  }
-
   // Text
-  beginText(opIdx) {
-    this.current.textMatrix = null;
-    this.current.textMatrixScale = 1;
-    this.current.x = this.current.lineX = 0;
-    this.current.y = this.current.lineY = 0;
-  }
-
   endText(opIdx) {
     const paths = this.pendingTextPaths;
     const ctx = this.ctx;
@@ -1684,22 +1492,6 @@ class CanvasGraphics {
       ctx.clip(newPath);
     }
     delete this.pendingTextPaths;
-  }
-
-  setCharSpacing(opIdx, spacing) {
-    this.current.charSpacing = spacing;
-  }
-
-  setWordSpacing(opIdx, spacing) {
-    this.current.wordSpacing = spacing;
-  }
-
-  setHScale(opIdx, scale) {
-    this.current.textHScale = scale / 100;
-  }
-
-  setLeading(opIdx, leading) {
-    this.current.leading = -leading;
   }
 
   setFont(opIdx, fontRefName, size) {
@@ -1759,37 +1551,6 @@ class CanvasGraphics {
 
     const fontString = `${italic} ${bold} ${browserFontSize}px ${typeface}`;
     this.ctx.font = fontString;
-  }
-
-  setTextRenderingMode(opIdx, mode) {
-    this.current.textRenderingMode = mode;
-  }
-
-  setTextRise(opIdx, rise) {
-    this.current.textRise = rise;
-  }
-
-  moveText(opIdx, x, y) {
-    this.current.x = this.current.lineX += x;
-    this.current.y = this.current.lineY += y;
-  }
-
-  setLeadingMoveText(opIdx, x, y) {
-    this.setLeading(opIdx, -y);
-    this.moveText(opIdx, x, y);
-  }
-
-  setTextMatrix(opIdx, matrix) {
-    const { current } = this;
-    current.textMatrix = matrix;
-    current.textMatrixScale = Math.hypot(matrix[0], matrix[1]);
-
-    current.x = current.lineX = 0;
-    current.y = current.lineY = 0;
-  }
-
-  nextLine(opIdx) {
-    this.moveText(opIdx, 0, this.current.leading);
   }
 
   #getScaledPath(path, currentTransform, transform) {
@@ -2208,11 +1969,6 @@ class CanvasGraphics {
   }
 
   // Type3 fonts
-  setCharWidth(opIdx, xWidth, yWidth) {
-    // We can safely ignore this since the width should be the same
-    // as the width in the Widths array.
-  }
-
   setCharWidthAndBounds(opIdx, xWidth, yWidth, llx, lly, urx, ury) {
     const clip = new Path2D();
     clip.rect(llx, lly, urx - llx, ury - lly);
@@ -2267,25 +2023,23 @@ class CanvasGraphics {
   }
 
   setStrokeRGBColor(opIdx, color) {
-    this.ctx.strokeStyle = this.current.strokeColor = color;
-    this.current.patternStroke = false;
+    super.setStrokeRGBColor(opIdx, color);
+    this.ctx.strokeStyle = color;
   }
 
   setStrokeTransparent(opIdx) {
-    this.ctx.strokeStyle = this.current.strokeColor = "transparent";
-    this.current.patternStroke = false;
+    super.setStrokeTransparent(opIdx);
+    this.ctx.strokeStyle = "transparent";
   }
 
   setFillRGBColor(opIdx, color) {
-    this.ctx.fillStyle = this.current.fillColor = color;
-    this.current.patternFill = false;
-    this.current.tilingPatternDims = null;
+    super.setFillRGBColor(opIdx, color);
+    this.ctx.fillStyle = color;
   }
 
   setFillTransparent(opIdx) {
-    this.ctx.fillStyle = this.current.fillColor = "transparent";
-    this.current.patternFill = false;
-    this.current.tilingPatternDims = null;
+    super.setFillTransparent(opIdx);
+    this.ctx.fillStyle = "transparent";
   }
 
   _getPattern(opIdx, objId, matrix = null) {
@@ -2341,14 +2095,6 @@ class CanvasGraphics {
   }
 
   // Images
-  beginInlineImage() {
-    unreachable("Should not call beginInlineImage");
-  }
-
-  beginImageData() {
-    unreachable("Should not call beginImageData");
-  }
-
   paintFormXObjectBegin(opIdx, matrix, bbox) {
     if (!this.contentVisible) {
       return;
@@ -2373,14 +2119,6 @@ class CanvasGraphics {
       this.ctx.clip(clip);
       this.endPath(opIdx);
     }
-  }
-
-  paintFormXObjectEnd(opIdx) {
-    if (!this.contentVisible) {
-      return;
-    }
-    this.restore(opIdx);
-    this.baseTransform = this.baseTransformStack.pop();
   }
 
   beginGroup(opIdx, group) {
@@ -2801,44 +2539,6 @@ class CanvasGraphics {
     this.compose();
   }
 
-  paintImageXObject(opIdx, objId) {
-    if (!this.contentVisible) {
-      return;
-    }
-    const imgData = this.getObject(opIdx, objId);
-    if (!imgData) {
-      warn("Dependent image isn't ready yet");
-      return;
-    }
-
-    this.paintInlineImageXObject(opIdx, imgData);
-  }
-
-  paintImageXObjectRepeat(opIdx, objId, scaleX, scaleY, positions) {
-    if (!this.contentVisible) {
-      return;
-    }
-    const imgData = this.getObject(opIdx, objId);
-    if (!imgData) {
-      warn("Dependent image isn't ready yet");
-      return;
-    }
-
-    const width = imgData.width;
-    const height = imgData.height;
-    const map = [];
-    for (let i = 0, ii = positions.length; i < ii; i += 2) {
-      map.push({
-        transform: [scaleX, 0, 0, scaleY, positions[i], positions[i + 1]],
-        x: 0,
-        y: 0,
-        w: width,
-        h: height,
-      });
-    }
-    this.paintInlineImageXObjectGroup(opIdx, imgData, map);
-  }
-
   applyTransferMapsToCanvas(ctx) {
     if (this.current.transferMaps !== "none") {
       ctx.filter = this.current.transferMaps;
@@ -2982,50 +2682,6 @@ class CanvasGraphics {
     }
     this.ctx.fillRect(0, 0, 1, 1);
     this.compose();
-  }
-
-  // Marked content
-
-  markPoint(opIdx, tag) {
-    // TODO Marked content.
-  }
-
-  markPointProps(opIdx, tag, properties) {
-    // TODO Marked content.
-  }
-
-  beginMarkedContent(opIdx, tag) {
-    this.markedContentStack.push({
-      visible: true,
-    });
-  }
-
-  beginMarkedContentProps(opIdx, tag, properties) {
-    if (tag === "OC") {
-      this.markedContentStack.push({
-        visible: this.optionalContentConfig.isVisible(properties),
-      });
-    } else {
-      this.markedContentStack.push({
-        visible: true,
-      });
-    }
-    this.contentVisible = this.isContentVisible();
-  }
-
-  endMarkedContent(opIdx) {
-    this.markedContentStack.pop();
-    this.contentVisible = this.isContentVisible();
-  }
-
-  // Compatibility
-
-  beginCompat(opIdx) {
-    // TODO ignore undefined operators (should we do that anyway?)
-  }
-
-  endCompat(opIdx) {
-    // TODO stop ignoring undefined operators
   }
 
   // Helper functions
@@ -3172,15 +2828,6 @@ class CanvasGraphics {
     if (saveRestore) {
       ctx.restore();
     }
-  }
-
-  isContentVisible() {
-    for (let i = this.markedContentStack.length - 1; i >= 0; i--) {
-      if (!this.markedContentStack[i].visible) {
-        return false;
-      }
-    }
-    return true;
   }
 }
 
