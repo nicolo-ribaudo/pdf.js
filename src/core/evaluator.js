@@ -127,6 +127,13 @@ const TEXT_CHUNK_BATCH_SIZE = 10;
 
 const deferred = Promise.resolve();
 
+// Yield to the event loop, rather than only to the microtask queue, such that
+// the worker can process incoming messages (e.g. stream pull/cancel requests)
+// during long-running parsing. Falls back to a microtask, e.g. in Node.js.
+function yieldToEventLoop() {
+  return globalThis.scheduler?.yield?.() ?? deferred;
+}
+
 // Callback function used when validating operation arguments.
 const argIsDict = arg => arg instanceof Dict;
 
@@ -2391,7 +2398,7 @@ class PartialEvaluator {
         operatorList.addOp(fn, args);
       }
       if (stop) {
-        next(deferred);
+        next(yieldToEventLoop());
         return;
       }
       // Close marked content and graphics states left open by this stream.
@@ -3625,7 +3632,7 @@ class PartialEvaluator {
         }
       } // while
       if (stop) {
-        next(deferred);
+        next(yieldToEventLoop());
         return;
       }
       flushTextContentItem();
@@ -4955,7 +4962,15 @@ class TranslatedFont {
     const [x0, y0, x1, y1] = font.bbox;
     const fontBBoxSize = Math.hypot(x1 - x0, y1 - y0);
 
+    // Every glyph gets its own `getOperatorList` call (and time slot), hence
+    // ensure that loading fonts with many glyphs doesn't block the worker.
+    let endTime = Date.now() + TimeSlotManager.TIME_SLOT_DURATION_MS;
+
     for (const key of charProcs.getKeys()) {
+      if (Date.now() >= endTime) {
+        await yieldToEventLoop();
+        endTime = Date.now() + TimeSlotManager.TIME_SLOT_DURATION_MS;
+      }
       try {
         const operatorList = new OperatorList();
         await type3Evaluator.getOperatorList({
