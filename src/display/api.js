@@ -1583,6 +1583,11 @@ class PDFPageProxy {
 
     const complete = error => {
       intentState.renderTasks.delete(internalRenderTask);
+      // When no rendering tasks remain, keep the operatorList reading paused
+      // until it's either aborted or a new rendering task is started.
+      if (intentState.renderTasks.size > 0) {
+        this.#resumeOperatorList(intentState);
+      }
 
       if (shouldRecordOperations) {
         const { recordedBBoxes } = internalRenderTask;
@@ -1657,9 +1662,11 @@ class PDFPageProxy {
       pageColors,
       operationsFilter,
       rendererWorker: this._transport.rendererWorker,
+      onResume: () => this.#resumeOperatorList(intentState),
     });
 
     (intentState.renderTasks ||= new Set()).add(internalRenderTask);
+    this.#resumeOperatorList(intentState);
     const renderTask = internalRenderTask.task;
 
     Promise.all([
@@ -1960,6 +1967,13 @@ class PDFPageProxy {
             return; // Ignore any pending requests if the worker was terminated.
           }
           this._renderPageChunk(value, intentState);
+
+          if (this.#isRenderingPaused(intentState)) {
+            // Stop reading while rendering is paused, such that backpressure
+            // also pauses the parsing on the worker-thread.
+            intentState.resumeOperatorList = pump;
+            return;
+          }
           pump();
         },
         reason => {
@@ -1989,6 +2003,26 @@ class PDFPageProxy {
       );
     };
     pump();
+  }
+
+  #isRenderingPaused({ renderTasks }) {
+    if (!renderTasks?.size) {
+      return false;
+    }
+    for (const renderTask of renderTasks) {
+      if (!renderTask.paused) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  #resumeOperatorList(intentState) {
+    const { resumeOperatorList } = intentState;
+    if (resumeOperatorList && !this.#isRenderingPaused(intentState)) {
+      intentState.resumeOperatorList = null;
+      resumeOperatorList();
+    }
   }
 
   /**
@@ -3311,6 +3345,7 @@ class InternalRenderTask {
     pageColors = null,
     operationsFilter = null,
     rendererWorker = null,
+    onResume = null,
   }) {
     this.callback = callback;
     this.params = params;
@@ -3326,6 +3361,8 @@ class InternalRenderTask {
     this.pageColors = pageColors;
 
     this.running = false;
+    this.paused = false;
+    this._onResume = onResume;
     this.graphicsReadyCallback = null;
     this.graphicsReady = false;
     this._useRequestAnimationFrame =
@@ -3337,6 +3374,7 @@ class InternalRenderTask {
     this._cancelBound = this.cancel.bind(this);
     this._continueBound = this._continue.bind(this);
     this._scheduleNextBound = this._scheduleNext.bind(this);
+    this._resumeBound = this._resume.bind(this);
     this._nextBound = this._next.bind(this);
     this._canvas = params.canvas;
     this._canvasContext = params.canvas ? null : params.canvasContext;
@@ -3510,10 +3548,20 @@ class InternalRenderTask {
       return;
     }
     if (this.task.onContinue) {
-      this.task.onContinue(this._scheduleNextBound);
+      // Rendering is paused until the `onContinue`-callback lets it resume.
+      this.paused = true;
+      this.task.onContinue(this._resumeBound);
     } else {
       this._scheduleNext();
     }
+  }
+
+  _resume() {
+    if (this.paused) {
+      this.paused = false;
+      this._onResume?.();
+    }
+    this._scheduleNext();
   }
 
   _scheduleNext() {
