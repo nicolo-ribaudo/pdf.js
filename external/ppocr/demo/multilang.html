@@ -1,0 +1,186 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>OCR multilingual test</title>
+    <style>
+      @page {
+        size: A4;
+        margin: 25mm 22mm;
+      }
+      body {
+        margin: 0;
+        font:
+          12pt/1.55 "DejaVu Serif",
+          serif;
+        color: #111;
+      }
+      section {
+        break-after: page;
+      }
+      section:last-child {
+        break-after: auto;
+      }
+      .lang {
+        font:
+          9pt "DejaVu Sans",
+          sans-serif;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #555;
+        margin: 0 0 4mm;
+      }
+      h1 {
+        font-size: 22pt;
+        line-height: 1.25;
+        margin: 0 0 8mm;
+      }
+      h2 {
+        font-size: 13pt;
+        margin: 8mm 0 2mm;
+      }
+      p {
+        margin: 0 0 4mm;
+        text-align: justify;
+      }
+      .pangram {
+        font-size: 14pt;
+        margin-top: 8mm;
+      }
+      .note {
+        font-size: 9pt;
+        color: #333;
+        margin-top: 12mm;
+        border-top: 0.5pt solid #999;
+        padding-top: 2mm;
+      }
+      [lang="zh-CN"] {
+        font-family: "Noto Sans CJK SC", sans-serif;
+      }
+      [lang="ja"] {
+        font-family: "Noto Sans CJK JP", sans-serif;
+      }
+      [lang="ar"] {
+        font-family: "Noto Kufi Arabic", sans-serif;
+        line-height: 1.9;
+      }
+      [lang="ar"] p {
+        text-align: right;
+      }
+      [lang="ru"] {
+        font-family: "DejaVu Serif", serif;
+      }
+    </style>
+  </head>
+  <body>
+    <section lang="en">
+      <p class="lang">1 / 7 · English</p>
+      <h1>Optical Character Recognition Test</h1>
+      <h2>Universal Declaration of Human Rights, Article 1</h2>
+      <p>
+        All human beings are born free and equal in dignity and rights. They are endowed with reason and conscience and should act towards one another in a
+        spirit of brotherhood.
+      </p>
+      <h2>About this page</h2>
+      <p>
+        Optical character recognition (OCR) converts images of text into machine-readable characters. This page checks how well the recognition model handles
+        English prose, punctuation such as “quotes”, (parentheses) and semicolons; and numbers like 3.14, 1,250 and 2026-10-13.
+      </p>
+      <p class="pangram">The quick brown fox jumps over the lazy dog.</p>
+      <p class="note">Small print: the detector must also find short lines set in a 9-point font, like this one.</p>
+    </section>
+
+    <section lang="zh-CN">
+      <p class="lang">2 / 7 · 中文（简体）</p>
+      <h1>光学字符识别测试</h1>
+      <h2>《世界人权宣言》第一条</h2>
+      <p>人人生而自由，在尊严和权利上一律平等。他们赋有理性和良心，并应以兄弟关系的精神相对待。</p>
+      <h2>关于本页</h2>
+      <p>
+        光学字符识别（OCR）可以把文本图像转换为机器可读的字符。本页用于测试模型对简体中文、标点符号以及数字（例如 3.14、1,250 和 2026年10月13日）的识别效果。
+      </p>
+      <p class="pangram">天地玄黄，宇宙洪荒。日月盈昃，辰宿列张。</p>
+      <p class="note">小字说明：检测模型也应该能找到像这一行这样使用九号字的短行文字。</p>
+    </section>
+
+    <section lang="ja">
+      <p class="lang">3 / 7 · 日本語</p>
+      <h1>光学文字認識のテスト</h1>
+      <h2>世界人権宣言 第一条</h2>
+      <p>
+        すべての人間は、生まれながらにして自由であり、かつ、尊厳と権利とについて平等である。人間は、理性と良心とを授けられており、互いに同胞の精神をもって行動しなければならない。
+      </p>
+      <h2>このページについて</h2>
+      <p>
+        光学文字認識（OCR）は、文字の画像を機械が読み取れる文字に変換する技術です。このページでは、ひらがな・カタカナ・漢字が混在した文章や、数字（例：3.14、1,250、2026年10月13日）の認識精度を確認します。
+      </p>
+      <p class="pangram">いろはにほへと　ちりぬるを　わかよたれそ　つねならむ</p>
+      <p class="note">注：検出モデルは、この行のような9ポイントの小さな文字も見つける必要があります。</p>
+    </section>
+
+    <section lang="it">
+      <p class="lang">4 / 7 · Italiano</p>
+      <h1>Prova di riconoscimento ottico dei caratteri</h1>
+      <h2>Dichiarazione universale dei diritti umani, articolo 1</h2>
+      <p>
+        Tutti gli esseri umani nascono liberi ed eguali in dignità e diritti. Essi sono dotati di ragione e di coscienza e devono agire gli uni verso gli altri
+        in spirito di fratellanza.
+      </p>
+      <h2>Informazioni su questa pagina</h2>
+      <p>
+        Il riconoscimento ottico dei caratteri (OCR) trasforma le immagini di un testo in caratteri leggibili da una macchina. Questa pagina verifica le lettere
+        accentate — à, è, é, ì, ò, ù, come in «perché», «città», «può» e «più» — e i numeri come 3,14, 1.250 € e 13/10/2026.
+      </p>
+      <p class="pangram">Quel vituperabile xenofobo zelante assaggia il whisky ed esclama: alleluja!</p>
+      <p class="note">Nota: il rilevatore deve trovare anche le righe brevi scritte in corpo 9, come questa.</p>
+    </section>
+
+    <section lang="ar" dir="rtl">
+      <p class="lang">٥ / ٧ · العربية</p>
+      <h1>اختبار التعرف الضوئي على الحروف</h1>
+      <h2>الإعلان العالمي لحقوق الإنسان، المادة الأولى</h2>
+      <p>يولد جميع الناس أحراراً متساوين في الكرامة والحقوق. وقد وهبوا عقلاً وضميراً وعليهم أن يعامل بعضهم بعضاً بروح الإخاء.</p>
+      <h2>عن هذه الصفحة</h2>
+      <p>
+        يحوّل التعرف الضوئي على الحروف صور النصوص إلى حروف يمكن للحاسوب قراءتها. تختبر هذه الصفحة قدرة النموذج على قراءة النص العربي من اليمين إلى اليسار،
+        والأرقام مثل ٣٫١٤ و١٢٥٠ و2026.
+      </p>
+      <p class="pangram">نص حكيم له سر قاطع وذو شأن عظيم مكتوب على ثوب أخضر ومغلف بجلد أزرق</p>
+      <p class="note">ملاحظة: يجب أن يعثر نموذج الكشف أيضاً على الأسطر القصيرة المكتوبة بخط صغير مثل هذا السطر.</p>
+    </section>
+
+    <section lang="fr">
+      <p class="lang">6 / 7 · Français</p>
+      <h1>Test de reconnaissance optique de caractères</h1>
+      <h2>Déclaration universelle des droits de l’homme, article premier</h2>
+      <p>
+        Tous les êtres humains naissent libres et égaux en dignité et en droits. Ils sont doués de raison et de conscience et doivent agir les uns envers les
+        autres dans un esprit de fraternité.
+      </p>
+      <h2>À propos de cette page</h2>
+      <p>
+        La reconnaissance optique de caractères (OCR) convertit des images de texte en caractères lisibles par une machine. Cette page vérifie les accents — é,
+        è, ê, à, ç, ô, ù, ï, œ — les guillemets « français » et les nombres comme 3,14, 1 250 € et le 13 octobre 2026.
+      </p>
+      <p class="pangram">Portez ce vieux whisky au juge blond qui fume.</p>
+      <p class="note">Remarque : le détecteur doit aussi trouver les lignes courtes composées en corps 9, comme celle-ci.</p>
+    </section>
+
+    <section lang="ru">
+      <p class="lang">7 / 7 · Русский</p>
+      <h1>Тест оптического распознавания символов</h1>
+      <h2>Всеобщая декларация прав человека, статья 1</h2>
+      <p>
+        Все люди рождаются свободными и равными в своем достоинстве и правах. Они наделены разумом и совестью и должны поступать в отношении друг друга в духе
+        братства.
+      </p>
+      <h2>Об этой странице</h2>
+      <p>
+        Оптическое распознавание символов (OCR) преобразует изображения текста в символы, которые может прочитать компьютер. Эта страница проверяет, как модель
+        распознаёт кириллицу, букву «ё», кавычки-«ёлочки» и числа, например 3,14, 1 250 ₽ и 13 октября 2026 г.
+      </p>
+      <p class="pangram">Съешь же ещё этих мягких французских булок, да выпей чаю.</p>
+      <p class="note">Примечание: детектор должен находить и короткие строки, набранные мелким шрифтом, как эта.</p>
+    </section>
+  </body>
+</html>

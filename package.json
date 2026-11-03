@@ -38,6 +38,7 @@
     "jasmine": "^7.0.0",
     "jsdoc": "^4.0.5",
     "marked": "^18.1.0",
+    "onnxruntime-web": "1.30.0",
     "ordered-read-streams": "^2.0.0",
     "postcss": "^8.5.28",
     "postcss-discard-comments": "^9.0.6",

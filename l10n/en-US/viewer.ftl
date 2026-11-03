@@ -871,3 +871,131 @@ pdfjs-digital-signature-properties-sub-signatures =
         [one] Sub-signature ({ $count })
        *[other] Sub-signatures ({ $count })
     }
+
+## Text recognition (OCR) of the pages, only available in the development
+## viewer.
+
+# Variables:
+#   $model (String) - the name of the OCR model, e.g. "PP-OCRv5 English", or
+#                     "auto" when it is chosen automatically
+pdfjs-ocr-button = OCR
+    .title =
+        { $model ->
+            [auto] Recognize the text of this page
+           *[other] Recognize the text of this page with { $model }
+        }
+pdfjs-ocr-cancel-button = Cancel
+    .title = Cancel the text recognition
+pdfjs-ocr-clear-button = Clear
+    .title = Remove the recognized text
+# Variables:
+#   $model (String) - the name of the OCR model, e.g. "PP-OCRv5 English", or
+#                     "auto" when it is chosen automatically
+pdfjs-ocr-retry-button = Retry
+    .title =
+        { $model ->
+            [auto] Retry the text recognition
+           *[other] Retry the text recognition with { $model }
+        }
+pdfjs-ocr-menu-button =
+    .title = Choose the OCR model
+    .aria-label = Choose the OCR model
+# The OCR engine chooses the model by itself, e.g. from the script of the text.
+pdfjs-ocr-model-auto = Automatic
+pdfjs-ocr-model-auto-description = Chosen from the text of the page
+pdfjs-ocr-status-queued = Queued
+pdfjs-ocr-status-rendering = Rendering page…
+pdfjs-ocr-status-loading = Loading OCR engine…
+# Variables:
+#   $percent (Number) - download progress of the OCR engine, from 0 to 100
+pdfjs-ocr-status-downloading = Loading OCR engine… { $percent }%
+pdfjs-ocr-status-preparing = Preparing OCR engine…
+pdfjs-ocr-status-detecting = Detecting text…
+pdfjs-ocr-status-identifying = Identifying the language…
+
+## The OCR models can be loaded when they are first needed.
+##
+## Variables:
+##   $model (String) - the name of the OCR model, e.g. "PP-OCRv5 Latin"
+
+pdfjs-ocr-status-loading-model = Loading { $model }…
+# Variables:
+#   $percent (Number) - download progress of the OCR model, from 0 to 100
+pdfjs-ocr-status-downloading-model = Loading { $model }… { $percent }%
+pdfjs-ocr-status-preparing-model = Preparing { $model }…
+
+##
+
+# Variables:
+#   $done (Number) - number of text lines recognized so far
+#   $total (Number) - number of detected text lines
+pdfjs-ocr-status-recognizing = Recognizing { $done }/{ $total }
+# Variables:
+#   $done (Number) - number of text lines recognized so far
+#   $total (Number) - number of detected text lines
+#   $models (String) - the names of the OCR models in use, e.g.
+#                      "PP-OCRv5 Latin + PP-OCRv5 Arabic"
+pdfjs-ocr-status-recognizing-models = Recognizing { $done }/{ $total } · { $models }
+
+## The status once the text has been recognized.
+##
+## Variables:
+##   $lines (Number) - number of recognized text lines
+##   $duration (Number) - time spent recognizing the text, in milliseconds
+##   $engine (String) - how the text was recognized, as described by the OCR
+##                      engine, e.g. "WebGPU"
+##   $models (String) - the names of the OCR models used, e.g.
+##                      "PP-OCRv5 Latin + PP-OCRv5 Arabic"
+##   $render (Number) - time spent rendering the page, in milliseconds
+##   $details (String) - more details from the OCR engine, e.g. timings
+
+pdfjs-ocr-status-done =
+    { $lines ->
+        [one] { $lines } line · { $duration } ms · { $engine } · { $models }
+       *[other] { $lines } lines · { $duration } ms · { $engine } · { $models }
+    }
+    .title =
+        Rendering: { $render } ms
+        { $details }
+# The models were chosen automatically.
+pdfjs-ocr-status-done-auto =
+    { $lines ->
+        [one] { $lines } line · { $duration } ms · { $engine } · Auto: { $models }
+       *[other] { $lines } lines · { $duration } ms · { $engine } · Auto: { $models }
+    }
+    .title =
+        Rendering: { $render } ms
+        { $details }
+
+##
+
+# Variables:
+#   $message (String) - the error message
+pdfjs-ocr-status-error = OCR failed
+    .title = { $message }
+
+## The toolbar button to recognize the text of all the pages.
+
+pdfjs-ocr-document-button =
+    .title = Recognize the text of all the pages (OCR)
+pdfjs-ocr-document-button-label = Recognize text
+pdfjs-ocr-document-cancel-button =
+    .title = Cancel the text recognition of all the pages
+pdfjs-ocr-document-cancel-button-label = Cancel text recognition
+# Variables:
+#   $done (Number) - number of pages processed so far
+#   $total (Number) - number of pages to process
+pdfjs-ocr-document-status-running = OCR { $done }/{ $total }
+# Variables:
+#   $pages (Number) - number of pages whose text was recognized
+#   $lines (Number) - number of recognized text lines
+#   $duration (Number) - time spent, in seconds
+pdfjs-ocr-document-status-done =
+    { $pages ->
+        [one] { $pages } page
+       *[other] { $pages } pages
+    } · { $lines ->
+        [one] { $lines } line
+       *[other] { $lines } lines
+    } · { $duration } s
+pdfjs-ocr-document-status-nothing = All the pages are recognized

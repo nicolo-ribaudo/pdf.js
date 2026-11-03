@@ -136,6 +136,8 @@ const PDFViewerApplication = {
   pdfLinkService: null,
   /** @type {PdfTextExtractor|null} */
   pdfTextExtractor: null,
+  /** @type {PDFOCRManager|null} */
+  pdfOCRManager: null,
   /** @type {PDFHistory} */
   pdfHistory: null,
   /** @type {ViewsManager} */
@@ -942,6 +944,28 @@ const PDFViewerApplication = {
         pdfViewer,
         eventBus
       );
+    }
+
+    if (typeof PDFJSDev === "undefined") {
+      // The text recognition (OCR) user interface is only enabled when the
+      // embedder provides a service. It's loaded lazily, to not delay the
+      // viewer initialization, and it's not part of the builds yet.
+      externalServices
+        .createTextRecognitionService()
+        .then(async service => {
+          if (!service) {
+            return;
+          }
+          const { PDFOCRManager } = await import("./ocr/ocr_manager.js");
+          this.pdfOCRManager = new PDFOCRManager({
+            service,
+            eventBus,
+            pdfViewer,
+            toolbar: document.getElementById("toolbarViewerRight"),
+            abortSignal,
+          });
+        })
+        .catch(reason => console.error("Unable to enable OCR:", reason));
     }
   },
 

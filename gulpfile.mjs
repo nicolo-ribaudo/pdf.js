@@ -3218,8 +3218,12 @@ gulp.task(
         }
       }
 
+      // Cross-origin isolation enables multi-threaded WebAssembly, e.g. for
+      // the OCR demo, but requires all cross-origin resources to opt in.
+      const crossOriginIsolated = process.argv.includes("--coi");
+
       const { WebServer } = await import("./test/webserver.mjs");
-      const server = new WebServer({ host, port });
+      const server = new WebServer({ host, port, crossOriginIsolated });
       server.start();
     }
   )

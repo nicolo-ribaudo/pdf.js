@@ -67,6 +67,18 @@ class ExternalServices extends BaseExternalServices {
     return new SignatureStorage(eventBus, signal);
   }
 
+  async createTextRecognitionService() {
+    if (typeof PDFJSDev === "undefined") {
+      // The PaddleOCR demo is only available in the development viewer. It
+      // isn't part of PDF.js: embedders provide their own OCR engine.
+      const { PaddleOCRService } =
+        await import("../external/ppocr/paddle_ocr_service.js");
+      const params = new URLSearchParams(document.location.hash.slice(1));
+      return new PaddleOCRService({ backend: params.get("ocrbackend") });
+    }
+    return null;
+  }
+
   createSignatureVerifier() {
     return typeof PDFJSDev === "undefined" || PDFJSDev.test("TESTING")
       ? new FakeSignatureVerifier()

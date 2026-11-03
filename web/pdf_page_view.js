@@ -133,9 +133,10 @@ const DEFAULT_LAYER_PROPERTIES =
 const LAYERS_ORDER = new Map([
   ["canvasWrapper", 0],
   ["textLayer", 1],
-  ["annotationLayer", 2],
-  ["annotationEditorLayer", 3],
-  ["xfaLayer", 3],
+  ["ocrLayer", 2],
+  ["annotationLayer", 3],
+  ["annotationEditorLayer", 4],
+  ["xfaLayer", 4],
 ]);
 
 class PDFPageView extends BasePDFPageView {
@@ -175,7 +176,7 @@ class PDFPageView extends BasePDFPageView {
     regularAnnotations: true,
   };
 
-  #layers = [null, null, null, null];
+  #layers = [null, null, null, null, null];
 
   /**
    * @param {PDFPageViewOptions} options
@@ -326,6 +327,18 @@ class PDFPageView extends BasePDFPageView {
       }
     }
     this.div.prepend(div);
+  }
+
+  /**
+   * Add the (development viewer only) OCR layer, between the textLayer and the
+   * annotationLayer. Since it's never removed by `reset`, it survives zooming,
+   * rotation and the page being evicted from the `PDFPageViewBuffer`.
+   * NOTE: The caller must never remove `div` from the DOM.
+   * @param {HTMLDivElement} div
+   * @ignore
+   */
+  addOCRLayer(div) {
+    this.#addLayer(div, "ocrLayer");
   }
 
   #setDimensions() {
@@ -658,7 +671,8 @@ class PDFPageView extends BasePDFPageView {
         (keepAnnotationEditorLayer && this.annotationEditorLayer?.div) || null,
       xfaLayerNode = (keepXfaLayer && this.xfaLayer?.div) || null,
       textLayerNode = (keepTextLayer && this.textLayer?.div) || null,
-      canvasWrapperNode = (keepCanvasWrapper && this.#canvasWrapper) || null;
+      canvasWrapperNode = (keepCanvasWrapper && this.#canvasWrapper) || null,
+      ocrLayerNode = this.#layers[LAYERS_ORDER.get("ocrLayer")];
     for (let i = childNodes.length - 1; i >= 0; i--) {
       const node = childNodes[i];
       switch (node) {
@@ -667,6 +681,7 @@ class PDFPageView extends BasePDFPageView {
         case xfaLayerNode:
         case textLayerNode:
         case canvasWrapperNode:
+        case ocrLayerNode:
           continue;
       }
       if (keepPdfBugGroups && node.classList.contains("pdfBugGroupsLayer")) {

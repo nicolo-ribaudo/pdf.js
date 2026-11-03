@@ -44,7 +44,14 @@ const MIME_TYPES = {
 const DEFAULT_MIME_TYPE = "application/octet-stream";
 
 class WebServer {
-  constructor({ root, host, port, cacheExpirationTime, coverageEnabled }) {
+  constructor({
+    root,
+    host,
+    port,
+    cacheExpirationTime,
+    coverageEnabled,
+    crossOriginIsolated,
+  }) {
     const cwdURL = pathToFileURL(process.cwd()) + "/";
     this.rootURL = new URL(`${root || "."}/`, cwdURL);
     this.host = host || "localhost";
@@ -60,6 +67,9 @@ class WebServer {
       POST: [],
       WS: [],
     };
+    if (crossOriginIsolated) {
+      this.hooks.GET.unshift(crossOriginIsolationHandler);
+    }
   }
 
   start(callback) {
@@ -436,6 +446,15 @@ function crossOriginHandler(url, request, response) {
     );
     response.setHeader("Vary", "Origin");
   }
+}
+
+// Make the served pages cross-origin isolated, which enables
+// `SharedArrayBuffer` and hence multi-threaded WebAssembly (e.g. for the OCR
+// demo of the development viewer).
+function crossOriginIsolationHandler(url, request, response) {
+  response.setHeader("Cross-Origin-Opener-Policy", "same-origin");
+  response.setHeader("Cross-Origin-Embedder-Policy", "require-corp");
+  return false;
 }
 
 // This supports the "Redirects" test in test/unit/network_spec.js and

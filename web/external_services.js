@@ -69,6 +69,16 @@ class BaseExternalServices {
   }
 
   /**
+   * Build a text recognition (OCR) service, see `BaseTextRecognitionService`
+   * in `web/text_recognition_service.js`. The OCR user interface is only
+   * enabled when a service is returned.
+   * @returns {Promise<BaseTextRecognitionService | null>}
+   */
+  async createTextRecognitionService() {
+    return null;
+  }
+
+  /**
    * Platform appearance renderer; see `PDFDocumentProxy.saveDocument`.
    * @type {?function(Array<object>): Promise<Uint8Array | null>}
    */
